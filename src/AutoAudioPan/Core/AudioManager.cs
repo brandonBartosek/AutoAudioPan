@@ -53,6 +53,8 @@ public sealed class AudioManager : IDisposable
         var now = DateTime.UtcNow;
         var self = (uint)Environment.ProcessId;
 
+        foreach (var r in _byRoot.Values) r.AllHeld = true;
+
         foreach (var s in sessions)
         {
             uint pid;
@@ -75,11 +77,15 @@ public sealed class AudioManager : IDisposable
             }
             row.LastSeen = now;
             if (s.State == AudioSessionState.AudioSessionStateActive) row.LastActive = now;
-            if (row.Pipeline != null && !_silencer.IsHeld(s)) _silencer.Silence(s);
+            if (row.Pipeline != null && !_silencer.IsHeld(s))
+            {
+                try { _silencer.Silence(s); } catch { row.AllHeld = false; }
+            }
         }
 
         foreach (var row in _byRoot.Values.ToList())
         {
+            row.HeldOnce = row.Pipeline != null;
             row.Active = now - row.LastActive < IdleGrace;
             if (now - row.LastSeen > RowTtl)
             {
@@ -141,6 +147,7 @@ public sealed class AudioManager : IDisposable
                 row.Pipeline.TargetPan = (float)row.EffectivePan;
                 row.Pipeline.Volume = (float)(row.Volume / 100.0);
                 row.Pipeline.Muted = row.Muted;
+                row.Pipeline.InputGain = row.AllHeld && row.HeldOnce ? 1f / SessionSilencer.Attenuation : 1f;
             }
         }
     }

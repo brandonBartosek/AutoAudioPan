@@ -19,6 +19,8 @@ public sealed class AppRow : INotifyPropertyChanged
     public string ExeName { get; init; } = "";
     public string DisplayName { get; init; } = "";
     public ImageSource? Icon { get; init; }
+    public bool AllHeld { get; set; } = true;
+    public bool HeldOnce { get; set; }
     public AppPipeline? Pipeline { get; set; }
     public DateTime LastActive { get; set; } = DateTime.UtcNow;
     public DateTime LastSeen { get; set; } = DateTime.UtcNow;

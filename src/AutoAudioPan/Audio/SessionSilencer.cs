@@ -6,6 +6,8 @@ namespace AutoAudioPan.Audio;
 /// <summary>Mutes the original app sessions while we re-render them, and always restores them.</summary>
 public sealed class SessionSilencer
 {
+    /// <summary>Loopback capture is taken after session volume, so originals are attenuated (inaudible) and the pipeline restores the gain.</summary>
+    public const float Attenuation = 0.002f;
     private readonly Dictionary<string, (AudioSessionControl Session, float Original)> _held = new();
     private static string RecoveryPath => Path.Combine(Path.GetTempPath(), "AutoAudioPan.recovery.json");
 
@@ -25,7 +27,7 @@ public sealed class SessionSilencer
         if (_held.ContainsKey(id)) return;
         var vol = s.SimpleAudioVolume;
         _held[id] = (s, vol.Volume);
-        vol.Volume = 0f;
+        vol.Volume = vol.Volume * Attenuation;
         SaveRecovery();
     }
 

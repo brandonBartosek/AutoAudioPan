@@ -14,6 +14,7 @@ public sealed class AppPipeline : IDisposable
 
     public volatile float TargetPan;
     public volatile float Volume = 1f;
+    public volatile float InputGain = 1f;
     public volatile bool Muted;
 
     public AppPipeline(uint rootPid)
@@ -42,7 +43,13 @@ public sealed class AppPipeline : IDisposable
 
     private void OnData(float[] samples, int count)
     {
+        float peak = 0;
+        for (int i = 0; i < count; i++) { var a = Math.Abs(samples[i]); if (a > peak) peak = a; }
         float vol = Muted ? 0f : Volume;
+        // Originals are attenuated, so captured peaks are tiny; a loud buffer means an unattenuated source, so skip the gain.
+        float gain = InputGain;
+        if (gain > 1f && peak > 0.02f) gain = 1f;
+        vol *= gain;
         float target = TargetPan;
         // Smooth pan changes so window moves don't click.
         _pan += (target - _pan) * 0.15f;
@@ -50,8 +57,8 @@ public sealed class AppPipeline : IDisposable
         for (int i = 0; i + 1 < count; i += 2)
         {
             Core.PanMath.Apply(samples[i], samples[i + 1], pan, out var l, out var r);
-            samples[i] = l * vol;
-            samples[i + 1] = r * vol;
+            samples[i] = Math.Clamp(l * vol, -1f, 1f);
+            samples[i + 1] = Math.Clamp(r * vol, -1f, 1f);
         }
         int bytes = count * 4;
         if (_bytes.Length < bytes) _bytes = new byte[bytes];
