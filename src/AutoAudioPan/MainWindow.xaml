@@ -21,6 +21,9 @@
                            Text="Auto pans each app to where its window sits across your monitors." />
             </StackPanel>
             <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                <ui:Button Content="New Chrome window (separate audio)" Icon="{ui:SymbolIcon Open24}" Margin="0,0,16,0"
+                           Click="NewChrome_Click"
+                           ToolTip="Opens Chrome with its own profile so this window gets an independent row and pan." />
                 <ui:ToggleSwitch x:Name="AutostartToggle" Content="Start with Windows" Margin="0,0,8,0"
                                  Checked="Autostart_Changed" Unchecked="Autostart_Changed" />
             </StackPanel>

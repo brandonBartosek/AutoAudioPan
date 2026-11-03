@@ -66,12 +66,15 @@ public sealed class AudioManager : IDisposable
             {
                 if (s.State != AudioSessionState.AudioSessionStateActive) continue;
                 var exe = table.TryGetValue(root, out var ri) ? ri.Exe : info.Exe;
+                var tag = exe.Equals("chrome.exe", StringComparison.OrdinalIgnoreCase) ? Win32.ChromeProfileTag(root) : null;
                 row = new AppRow
                 {
-                    RootPid = root, ExeName = exe, DisplayName = Win32.FriendlyName(exe), Icon = LoadIcon(root)
+                    RootPid = root, ExeName = exe, SettingsKey = tag == null ? exe : $"{exe}#{tag}",
+                    DisplayName = tag == null ? Win32.FriendlyName(exe) : $"Chrome ({tag.Replace("Window", "separate window ")})",
+                    Icon = LoadIcon(root)
                 };
-                row.Load(_settings.For(exe));
-                row.SettingChanged += () => { row.Store(_settings.For(row.ExeName)); _settings.Save(); };
+                row.Load(_settings.For(row.SettingsKey));
+                row.SettingChanged += () => { row.Store(_settings.For(row.SettingsKey)); _settings.Save(); };
                 _byRoot[root] = row;
                 Log.Info($"row {exe} root={root}");
                 Rows.Add(row);
@@ -130,8 +133,8 @@ public sealed class AudioManager : IDisposable
             {
                 // No tab info: foreground, else last foreground, else first.
                 var w0 = mine.FirstOrDefault(w => w.Handle == fg);
-                if (w0 != null) _lastWindow[row.ExeName] = w0.Handle;
-                else if (_lastWindow.TryGetValue(row.ExeName, out var last)) w0 = mine.FirstOrDefault(w => w.Handle == last);
+                if (w0 != null) _lastWindow[row.SettingsKey] = w0.Handle;
+                else if (_lastWindow.TryGetValue(row.SettingsKey, out var last)) w0 = mine.FirstOrDefault(w => w.Handle == last);
                 w0 ??= mine[0];
                 sources = new List<WindowInfo> { w0 };
                 title = w0.Title;

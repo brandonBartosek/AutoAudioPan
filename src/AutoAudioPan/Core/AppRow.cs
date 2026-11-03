@@ -17,6 +17,7 @@ public sealed class AppRow : INotifyPropertyChanged
 
     public uint RootPid { get; set; }
     public string ExeName { get; init; } = "";
+    public string SettingsKey { get; init; } = "";
     public string DisplayName { get; init; } = "";
     public ImageSource? Icon { get; init; }
     public bool AllHeld { get; set; } = true;

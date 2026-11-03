@@ -101,4 +101,21 @@ public static class Win32
     {
         try { return Process.GetProcessById((int)pid).MainModule?.FileName; } catch { return null; }
     }
+
+    /// <summary>Returns "Window2" for a Chrome launched by SeparateChrome, else null.</summary>
+    public static string? ChromeProfileTag(uint pid)
+    {
+        try
+        {
+            using var s = new System.Management.ManagementObjectSearcher($"SELECT CommandLine FROM Win32_Process WHERE ProcessId={pid}");
+            foreach (System.Management.ManagementObject o in s.Get())
+            {
+                var cmd = o["CommandLine"] as string ?? "";
+                var m = System.Text.RegularExpressions.Regex.Match(cmd, @"ChromeProfiles\\(Window\d+)");
+                if (m.Success) return m.Groups[1].Value;
+            }
+        }
+        catch { }
+        return null;
+    }
 }

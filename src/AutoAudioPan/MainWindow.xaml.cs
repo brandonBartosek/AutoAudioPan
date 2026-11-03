@@ -26,6 +26,12 @@ public partial class MainWindow : FluentWindow
     private void UpdateEmpty() =>
         EmptyText.Visibility = _manager.Rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
+    private void NewChrome_Click(object sender, RoutedEventArgs e)
+    {
+        var error = SeparateChrome.Launch();
+        if (error != null) System.Windows.MessageBox.Show(error, "AutoAudioPan");
+    }
+
     private void Autostart_Changed(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
