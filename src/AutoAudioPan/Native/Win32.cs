@@ -4,7 +4,7 @@ using System.Text;
 
 namespace AutoAudioPan.Native;
 
-public sealed record WindowInfo(IntPtr Handle, uint ProcessId, string Title, double Left, double Right, bool Minimized);
+public sealed record WindowInfo(IntPtr Handle, uint ProcessId, string Title, double Left, double Right, bool Minimized, string ClassName);
 
 public static class Win32
 {
@@ -16,6 +16,7 @@ public static class Win32
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out Rect r);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr h, StringBuilder sb, int max);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr h, StringBuilder sb, int max);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr h, int idx);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int idx);
@@ -82,7 +83,9 @@ public static class Win32
             var sb = new StringBuilder(256);
             GetWindowText(h, sb, 256);
             if (sb.Length == 0) return true;
-            list.Add(new WindowInfo(h, pid, sb.ToString(), r.Left, r.Right, IsIconic(h)));
+            var cls = new StringBuilder(128);
+            GetClassName(h, cls, 128);
+            list.Add(new WindowInfo(h, pid, sb.ToString(), r.Left, r.Right, IsIconic(h), cls.ToString()));
             return true;
         }, IntPtr.Zero);
         return list;

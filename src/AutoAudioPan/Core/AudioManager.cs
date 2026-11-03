@@ -21,6 +21,7 @@ public sealed class AudioManager : IDisposable
     private readonly DispatcherTimer _timer;
     private readonly Dictionary<uint, AppRow> _byRoot = new();
     private readonly Dictionary<string, IntPtr> _lastWindow = new(StringComparer.OrdinalIgnoreCase);
+    private readonly AudibleWindowDetector _detector = new();
     private int _tick;
 
     public ObservableCollection<AppRow> Rows { get; } = new();
@@ -102,23 +103,51 @@ public sealed class AudioManager : IDisposable
         var (dl, dw) = Win32.VirtualDesktop();
         var fg = Win32.GetForegroundWindow();
 
+        var candidates = new List<IntPtr>();
+
         foreach (var row in _byRoot.Values)
         {
             var mine = windows.Where(w => table!.TryGetValue(w.ProcessId, out var p)
                                           && p.Exe.Equals(row.ExeName, StringComparison.OrdinalIgnoreCase)
                                           && Win32.RootOfTree(w.ProcessId, table) == row.RootPid).ToList();
             if (mine.Count == 0) continue;
+            candidates.AddRange(mine.Where(AudibleWindowDetector.IsCandidate).Select(w => w.Handle));
 
-            // Audible-window heuristic: foreground, else last foreground, else first.
-            var w0 = mine.FirstOrDefault(w => w.Handle == fg);
-            if (w0 != null) _lastWindow[row.ExeName] = w0.Handle;
-            else if (_lastWindow.TryGetValue(row.ExeName, out var last)) w0 = mine.FirstOrDefault(w => w.Handle == last);
-            w0 ??= mine[0];
+            // Windows whose tab strip reports "Audio playing" are the real sources.
+            var audible = new List<(WindowInfo Win, string Title)>();
+            foreach (var w in mine)
+                if (_detector.TryGet(w.Handle, out var tab) && !string.IsNullOrEmpty(tab))
+                    audible.Add((w, tab));
 
-            row.WindowTitle = w0.Title;
-            if (row.Mode == PanMode.Auto && !w0.Minimized)
-                row.CurrentPan = Math.Round(PanMath.FromWindow(w0.Left, w0.Right, dl, dw), 2);
+            List<WindowInfo> sources;
+            string title;
+            if (audible.Count > 0)
+            {
+                sources = audible.Select(a => a.Win).ToList();
+                title = audible[0].Title + (audible.Count > 1 ? $"  (+{audible.Count - 1} more window{(audible.Count > 2 ? "s" : "")})" : "");
+            }
+            else
+            {
+                // No tab info: foreground, else last foreground, else first.
+                var w0 = mine.FirstOrDefault(w => w.Handle == fg);
+                if (w0 != null) _lastWindow[row.ExeName] = w0.Handle;
+                else if (_lastWindow.TryGetValue(row.ExeName, out var last)) w0 = mine.FirstOrDefault(w => w.Handle == last);
+                w0 ??= mine[0];
+                sources = new List<WindowInfo> { w0 };
+                title = w0.Title;
+            }
+
+            row.WindowTitle = title;
+            var visible = sources.Where(w => !w.Minimized).ToList();
+            if (row.Mode == PanMode.Auto && visible.Count > 0)
+            {
+                // One audio stream per browser process: with several audible windows the best we can do is the average.
+                var pan = visible.Average(w => PanMath.FromWindow(w.Left, w.Right, dl, dw));
+                row.CurrentPan = Math.Round(pan, 2);
+            }
         }
+
+        _detector.SetCandidates(candidates);
     }
 
     private void EnsurePipelines()
@@ -179,6 +208,7 @@ public sealed class AudioManager : IDisposable
     public void Dispose()
     {
         _timer.Stop();
+        _detector.Dispose();
         foreach (var r in _byRoot.Values) { r.Pipeline?.Dispose(); r.Pipeline = null; }
         _silencer.RestoreAll();
     }
