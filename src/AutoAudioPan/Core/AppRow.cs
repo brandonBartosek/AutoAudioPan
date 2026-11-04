@@ -29,6 +29,9 @@ public sealed class AppRow : INotifyPropertyChanged
     public string WindowTitle { get => _windowTitle; set => Set(ref _windowTitle, value); }
     public bool Active { get => _active; set { if (Set(ref _active, value)) Raise(nameof(IsIdle)); } }
 
+    /// <summary>True while the browser extension pans this app per window, so the capture pipeline is not used.</summary>
+    public bool ExtensionHandled { get; set; }
+
     public bool IsAuto { get => _mode == PanMode.Auto; set { if (value) Mode = PanMode.Auto; } }
     public bool IsManual { get => _mode == PanMode.Manual; set { if (value) Mode = PanMode.Manual; } }
     public bool IsOff { get => _mode == PanMode.Off; set { if (value) Mode = PanMode.Off; } }

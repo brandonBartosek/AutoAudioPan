@@ -1,0 +1,72 @@
+const APP_URL = 'http://127.0.0.1:47831/chrome';
+const DEFAULTS = { mode: 'auto', manualPan: 0, volume: 100, muted: false };
+
+const bridge = { ok: false, cfg: null, at: 0 };
+let displayCache = { at: 0, left: 0, width: 1 };
+
+async function desktop() {
+  if (Date.now() - displayCache.at < 5000) return displayCache;
+  const ds = await chrome.system.display.getInfo();
+  const left = Math.min(...ds.map(d => d.bounds.left));
+  const right = Math.max(...ds.map(d => d.bounds.left + d.bounds.width));
+  displayCache = { at: Date.now(), left, width: Math.max(1, right - left) };
+  return displayCache;
+}
+
+// Same mapping as the app: window center across the whole virtual desktop -> [-1, 1].
+function panFor(win, d) {
+  const center = win.left + win.width / 2;
+  return Math.max(-1, Math.min(1, ((center - d.left) / d.width) * 2 - 1));
+}
+
+async function localConfig() {
+  const { cfg } = await chrome.storage.local.get('cfg');
+  return { ...DEFAULTS, ...(cfg || {}) };
+}
+
+async function refreshBridge(pan) {
+  bridge.at = Date.now();
+  try {
+    const r = await fetch(APP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pan }),
+      signal: AbortSignal.timeout(800)
+    });
+    if (!r.ok) throw new Error(String(r.status));
+    bridge.cfg = await r.json();
+    bridge.ok = true;
+  } catch {
+    bridge.ok = false;
+  }
+}
+
+async function handleTick(sender) {
+  const winId = sender.tab && sender.tab.windowId;
+  if (winId == null) return null;
+  const [win, d] = await Promise.all([chrome.windows.get(winId), desktop()]);
+  const windowPan = win.state === 'minimized' ? 0 : panFor(win, d);
+
+  if (Date.now() - bridge.at > 1000) refreshBridge(windowPan);
+  const cfg = bridge.ok ? bridge.cfg : await localConfig();
+
+  const mode = String(cfg.mode || 'auto').toLowerCase();
+  const pan = mode === 'manual' ? +cfg.manualPan || 0 : mode === 'off' ? 0 : windowPan;
+  const vol = cfg.muted ? 0 : Math.max(0, +cfg.volume) / 100;
+  return { pan, vol };
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.type === 'tick') {
+    handleTick(sender).then(sendResponse, () => sendResponse(null));
+    return true;
+  }
+  if (msg && msg.type === 'status') {
+    localConfig().then(cfg => sendResponse({ app: bridge.ok && Date.now() - bridge.at < 5000, cfg }));
+    return true;
+  }
+  if (msg && msg.type === 'setConfig') {
+    chrome.storage.local.set({ cfg: msg.cfg }).then(() => sendResponse(true));
+    return true;
+  }
+});

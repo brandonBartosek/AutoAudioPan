@@ -22,6 +22,7 @@ public sealed class AudioManager : IDisposable
     private readonly Dictionary<uint, AppRow> _byRoot = new();
     private readonly Dictionary<string, IntPtr> _lastWindow = new(StringComparer.OrdinalIgnoreCase);
     private readonly AudibleWindowDetector _detector = new();
+    private readonly ExtensionBridge _bridge = new();
     private int _tick;
 
     public ObservableCollection<AppRow> Rows { get; } = new();
@@ -44,6 +45,8 @@ public sealed class AudioManager : IDisposable
         try
         {
             var windows = Win32.TopLevelWindows();
+            if (_settings.Apps.TryGetValue("chrome.exe", out var cs))
+                _bridge.Config = new ExtensionConfig(cs.Mode.ToString(), cs.ManualPan, cs.Volume, cs.Muted);
             if (_tick++ % 2 == 0) RefreshSessions();
             UpdatePan(windows);
             EnsurePipelines();
@@ -180,6 +183,15 @@ public sealed class AudioManager : IDisposable
 
         foreach (var row in _byRoot.Values)
         {
+            // Only the user's main Chrome (not the separate-profile windows) has the extension installed.
+            row.ExtensionHandled = _bridge.Connected && row.SettingsKey.Equals("chrome.exe", StringComparison.OrdinalIgnoreCase);
+            if (row.ExtensionHandled)
+            {
+                row.WindowTitle = "Per-window pan via browser extension";
+                row.CurrentPan = Math.Round(_bridge.LastPan, 2);
+                continue;
+            }
+
             var mine = windows.Where(w => table!.TryGetValue(w.ProcessId, out var p)
                                           && p.Exe.Equals(row.ExeName, StringComparison.OrdinalIgnoreCase)
                                           && Win32.RootOfTree(w.ProcessId, table) == row.RootPid).ToList();
@@ -227,7 +239,8 @@ public sealed class AudioManager : IDisposable
     {
         foreach (var row in _byRoot.Values)
         {
-            bool wanted = (row.Active || row.Pinned) && (row.Mode != PanMode.Off || row.Volume < 100 || row.Muted);
+            bool wanted = (row.Active || row.Pinned) && !row.ExtensionHandled
+                          && (row.Mode != PanMode.Off || row.Volume < 100 || row.Muted);
             if (wanted && row.Pipeline == null)
             {
                 try
@@ -300,6 +313,7 @@ public sealed class AudioManager : IDisposable
     {
         _timer.Stop();
         _detector.Dispose();
+        _bridge.Dispose();
         foreach (var r in _byRoot.Values) { r.Pipeline?.Dispose(); r.Pipeline = null; }
         _silencer.RestoreAll();
     }

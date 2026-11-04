@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body { font: 13px system-ui, sans-serif; width: 260px; margin: 12px; }
+  label { display: block; margin-top: 8px; }
+  #app { color: #2a7; font-weight: 600; }
+  #local { color: #666; }
+  input[type=range] { width: 100%; }
+</style>
+<div id="status"></div>
+<div id="controls">
+  <label>Mode
+    <select id="mode"><option value="auto">Auto (window position)</option><option value="manual">Manual</option><option value="off">Off</option></select>
+  </label>
+  <label>Pan <span id="panv"></span><input id="pan" type="range" min="-100" max="100"></label>
+  <label>Volume <span id="volv"></span><input id="vol" type="range" min="0" max="100"></label>
+  <label><input id="mute" type="checkbox"> Mute</label>
+</div>
+<script src="popup.js"></script>
