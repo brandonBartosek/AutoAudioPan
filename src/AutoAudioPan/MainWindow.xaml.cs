@@ -21,6 +21,7 @@ public partial class MainWindow : FluentWindow
         RefreshKnown();
         AutostartToggle.IsChecked = settings.StartWithWindows;
         HeadTrackingToggle.IsChecked = settings.HeadTracking.Enabled;
+        TrackingModeCombo.SelectedIndex = settings.HeadTracking.GazeAssistEnabled ? 1 : 0;
         FocusAttenuationToggle.IsChecked = settings.HeadTracking.FocusAttenuationEnabled;
         ShowHiddenToggle.IsChecked = manager.ShowHiddenApps;
         RefreshHeadTrackingStatus();
@@ -105,6 +106,13 @@ public partial class MainWindow : FluentWindow
         _manager.CalibrateHeadTracking();
     }
 
+    private void TrackingMode_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || TrackingModeCombo.SelectedIndex < 0) return;
+        _settings.HeadTracking.GazeAssistEnabled = TrackingModeCombo.SelectedIndex == 1;
+        _settings.Save();
+    }
+
     private void FocusAttenuation_Changed(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
@@ -125,7 +133,9 @@ public partial class MainWindow : FluentWindow
         HeadTrackingDetails.Text =
             $"State: {d.Mode}; yaw: {d.YawDegrees:+0.0;-0.0;0.0}°; confidence: {d.Confidence:0.00}; " +
             $"last sample: {age}; pan cap: {_settings.HeadTracking.MaxPanMagnitude:0.00}; " +
-            $"focus: {(_settings.HeadTracking.FocusAttenuationEnabled ? "on" : "off")}. " +
+            $"focus: {(_settings.HeadTracking.FocusAttenuationEnabled ? "on" : "off")}; " +
+            $"gaze: {(_manager.GazeDiagnostics.Mode)} " +
+            $"confidence {_manager.GazeDiagnostics.Confidence:0.00}, dwell {_manager.GazeDiagnostics.DwellProgress:P0}. " +
             "Camera frames are processed locally and never saved or transmitted.";
     }
 

@@ -124,4 +124,77 @@ public sealed class HeadTrackingTests
         Assert.Equal(HeadTrackingMode.Fallback, result.Mode);
         Assert.False(result.CorrectionEnabled);
     }
+
+    [Fact]
+    public void GazeAssistRequiresDwellBeforeChangingFocus()
+    {
+        var stabilizer = new GazeAssistStabilizer();
+        var first = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var candidate = stabilizer.Update(true, true, true, 0.8, 1, false, first, first, 0.55,
+            TimeSpan.FromMilliseconds(400), TimeSpan.FromMilliseconds(900), 0.5);
+        var confirmed = stabilizer.Update(true, true, true, 0.8, 1, false, first.AddMilliseconds(450),
+            first.AddMilliseconds(450), 0.55, TimeSpan.FromMilliseconds(400),
+            TimeSpan.FromMilliseconds(900), 0.5);
+
+        Assert.Equal(GazeAssistMode.Candidate, candidate.Mode);
+        Assert.False(candidate.FocusConfirmed);
+        Assert.Equal(GazeAssistMode.Tracking, confirmed.Mode);
+        Assert.True(confirmed.FocusConfirmed);
+        Assert.True(confirmed.Direction > 0);
+    }
+
+    [Fact]
+    public void GazeAssistRejectsBlinksAndSaccades()
+    {
+        var stabilizer = new GazeAssistStabilizer();
+        var first = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        stabilizer.Update(true, true, true, -0.7, 1, false, first, first, 0.55,
+            TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(900), 1);
+        stabilizer.Update(true, true, true, -0.7, 1, false, first.AddMilliseconds(2),
+            first.AddMilliseconds(2), 0.55, TimeSpan.FromMilliseconds(1),
+            TimeSpan.FromMilliseconds(900), 1);
+
+        var blink = stabilizer.Update(true, true, true, -0.7, 1, true, first.AddMilliseconds(50),
+            first.AddMilliseconds(50), 0.55, TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(900), 1);
+        var saccade = stabilizer.Update(true, true, true, 0.9, 1, false, first.AddMilliseconds(100),
+            first.AddMilliseconds(100), 0.55, TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(900), 1);
+
+        Assert.Equal(GazeAssistMode.TemporarilyLost, blink.Mode);
+        Assert.Equal(GazeAssistMode.TemporarilyLost, saccade.Mode);
+        Assert.True(blink.Direction < 0);
+        Assert.True(saccade.Direction < 0);
+    }
+
+    [Fact]
+    public void GazeAssistRetainsFocusBrieflyThenFallsBack()
+    {
+        var stabilizer = new GazeAssistStabilizer();
+        var first = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        stabilizer.Update(true, true, true, 0.7, 1, false, first, first, 0.55,
+            TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(900), 1);
+        stabilizer.Update(true, true, true, 0.7, 1, false, first.AddMilliseconds(2),
+            first.AddMilliseconds(2), 0.55, TimeSpan.FromMilliseconds(1),
+            TimeSpan.FromMilliseconds(900), 1);
+
+        var held = stabilizer.Update(true, true, false, 0.7, 0, false, first,
+            first.AddMilliseconds(500), 0.55, TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(900), 1);
+        var fallback = stabilizer.Update(true, true, false, 0.7, 0, false, first,
+            first.AddSeconds(2), 0.55, TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(900), 0.2);
+
+        Assert.Equal(GazeAssistMode.TemporarilyLost, held.Mode);
+        Assert.True(held.FocusConfirmed);
+        Assert.Equal(GazeAssistMode.Fallback, fallback.Mode);
+        Assert.True(Math.Abs(fallback.Direction) < Math.Abs(held.Direction));
+    }
+
+    [Fact]
+    public void FocusGainForDirectionUsesNormalizedGazeDirection()
+    {
+        var near = HeadYawMath.FocusGainForDirection(0.8, 0.8, true, 0.55, 0.55);
+        var far = HeadYawMath.FocusGainForDirection(-0.8, 0.8, true, 0.55, 0.55);
+
+        Assert.True(near > far);
+        Assert.InRange(far, 0.55, 1);
+    }
 }

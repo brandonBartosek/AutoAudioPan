@@ -137,6 +137,11 @@
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                         <ui:ToggleSwitch x:Name="HeadTrackingToggle" Content="Enable head-yaw correction"
                                          Checked="HeadTracking_Changed" Unchecked="HeadTracking_Changed" />
+                        <ComboBox x:Name="TrackingModeCombo" Width="170" Margin="16,0,0,0"
+                                  SelectionChanged="TrackingMode_Changed">
+                            <ComboBoxItem Content="Head only" />
+                            <ComboBoxItem Content="Head + gaze assist" />
+                        </ComboBox>
                         <ui:ToggleSwitch x:Name="FocusAttenuationToggle" Content="Focus attenuation"
                                          Margin="16,0,0,0"
                                          Checked="FocusAttenuation_Changed" Unchecked="FocusAttenuation_Changed" />
@@ -145,6 +150,9 @@
                     </StackPanel>
                     <TextBlock x:Name="HeadTrackingDetails" Margin="0,6,0,0"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,6,0,0"
+                               Text="Gaze assist uses local eye-region pupil tracking only for dwell-confirmed focus attenuation; rapid eye movements and blinks are ignored."
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     <ui:Button Content="Calibrate neutral" Margin="0,8,0,0" HorizontalAlignment="Left"
                                Click="HeadTrackingCalibrate_Click" />
                     <TextBlock Margin="0,8,0,0" Text="Maximum spatial pan: 0.75 (configurable in settings.json). Focus attenuation is smooth and never mutes a source by itself."
