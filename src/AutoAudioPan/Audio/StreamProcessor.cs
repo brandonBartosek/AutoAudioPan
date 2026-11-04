@@ -31,7 +31,7 @@ public sealed class StreamProcessor
         {
             _gain += (targetGain - _gain) * GainCoef;
             _pan += (targetPan - _pan) * PanCoef;
-            float fade = _fadeFrame < FadeInFrames ? (float)_fadeFrame++ / FadeInFrames : 1f;
+            float fade = _fadeFrame < FadeInFrames ? (float)(targetGain > 0f ? _fadeFrame++ : _fadeFrame) / FadeInFrames : 1f;
             float g = _gain * fade;
             PanMath.Apply(samples[i], samples[i + 1], _pan, out var l, out var r);
             samples[i] = SoftLimit(l * g);

@@ -166,7 +166,7 @@ public sealed class AudioManager : IDisposable
                     row.Pipeline.Failed += ex => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => { Log.Error("PipelineFailed", ex); StopPipeline(row, Win32.ProcessTable()); });
                 }
                 catch (Exception ex) { Log.Error("StartPipeline", ex); row.Pipeline = null; continue; }
-                _tick = 0; // silence original sessions on next refresh
+                SilenceNow(row);
                 Log.Info($"pipeline started {row.ExeName}");
             }
             else if (!wanted && row.Pipeline != null)
@@ -182,6 +182,24 @@ public sealed class AudioManager : IDisposable
                 row.Pipeline.InputGain = row.AllHeld && row.HeldOnce ? 1f / SessionSilencer.Attenuation : 1f;
             }
         }
+    }
+
+    // Silence the original sessions immediately so the app isn't heard directly alongside the pipeline.
+    private void SilenceNow(AppRow row)
+    {
+        try
+        {
+            var table = Win32.ProcessTable();
+            foreach (var s in SessionSilencer.Enumerate())
+            {
+                uint pid;
+                try { pid = s.GetProcessID; } catch { continue; }
+                if (pid == 0 || !table.ContainsKey(pid) || Win32.RootOfTree(pid, table) != row.RootPid) continue;
+                try { _silencer.Silence(s); } catch { row.AllHeld = false; }
+            }
+            row.HeldOnce = true;
+        }
+        catch (Exception ex) { Log.Error("SilenceNow", ex); }
     }
 
     private void StopPipeline(AppRow row, Dictionary<uint, (uint Parent, string Exe)> table)

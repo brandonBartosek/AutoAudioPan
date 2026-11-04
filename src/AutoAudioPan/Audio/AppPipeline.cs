@@ -11,6 +11,7 @@ public sealed class AppPipeline : IDisposable
     private readonly BufferedWaveProvider _buffer;
     private readonly WasapiOut _out;
     private readonly StreamProcessor _proc = new();
+    private readonly System.Diagnostics.Stopwatch _age = System.Diagnostics.Stopwatch.StartNew();
 
     public volatile float TargetPan;
     public volatile float Volume = 1f;
@@ -46,7 +47,8 @@ public sealed class AppPipeline : IDisposable
     {
         float peak = 0;
         for (int i = 0; i < count; i++) { var a = Math.Abs(samples[i]); if (a > peak) peak = a; }
-        float vol = Muted ? 0f : Volume;
+        // Stay silent briefly while the original session is attenuated so its direct audio and our copy never overlap.
+        float vol = Muted || _age.ElapsedMilliseconds < 250 ? 0f : Volume;
         // Originals are attenuated, so captured peaks are tiny; a loud buffer means an unattenuated source, so skip the gain.
         float gain = InputGain;
         if (gain > 1f && peak > 0.02f) gain = 1f;
