@@ -50,19 +50,8 @@ public partial class App : Application
 
     private static System.Drawing.Icon CreateTrayIcon()
     {
-        using var bmp = new System.Drawing.Bitmap(32, 32);
-        using (var g = System.Drawing.Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.Clear(System.Drawing.Color.Transparent);
-            using var bg = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0, 120, 212));
-            g.FillEllipse(bg, 1, 1, 30, 30);
-            using var pen = new System.Drawing.Pen(System.Drawing.Color.White, 3);
-            g.DrawLine(pen, 9, 16, 23, 16);
-            g.FillEllipse(System.Drawing.Brushes.White, 6, 13, 6, 6);
-            g.FillEllipse(System.Drawing.Brushes.White, 20, 13, 6, 6);
-        }
-        return System.Drawing.Icon.FromHandle(bmp.GetHicon());
+        var info = GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"));
+        return new System.Drawing.Icon(info.Stream);
     }
 
     private System.Windows.Controls.ContextMenu BuildMenu()
