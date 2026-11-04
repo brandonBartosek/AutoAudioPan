@@ -1,13 +1,13 @@
 // Isolated-world bridge between the page (main.js) and the service worker.
-let active = false;
+let hooked = false;
 let dead = false;
 
 window.addEventListener('message', e => {
   const d = e.data;
   if (e.source !== window || !d || d.aapStatus !== 1) return;
-  const was = active;
-  active = d.hooked > 0;
-  if (active && !was) poll();
+  const was = hooked;
+  hooked = d.hooked > 0;
+  if (hooked && !was) poll();
 });
 
 async function poll() {
@@ -20,5 +20,6 @@ async function poll() {
   }
 }
 
-// Polling also keeps the MV3 service worker alive while audio is playing.
-setInterval(() => { if (active) poll(); }, 500);
+// Visible pages poll even before any audio plays so the app sees the extension as connected
+// (and the service worker stays alive); hidden pages poll only while they have hooked audio.
+setInterval(() => { if (hooked || document.visibilityState === 'visible') poll(); }, 1000);

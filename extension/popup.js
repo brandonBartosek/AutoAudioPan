@@ -26,5 +26,11 @@ function save() {
   chrome.runtime.sendMessage({ type: 'setConfig', cfg });
 }
 
-chrome.runtime.sendMessage({ type: 'status' }).then(s => render(s.cfg, s.app));
+chrome.runtime.sendMessage({ type: 'status' }).then(async s => {
+  let app = s.app;
+  if (!app) {
+    try { app = (await fetch('http://127.0.0.1:47831/chrome', { method: 'POST', body: '{}', signal: AbortSignal.timeout(800) })).ok; } catch { app = false; }
+  }
+  render(s.cfg, app);
+});
 for (const id of ['mode', 'pan', 'vol', 'mute']) $(id).addEventListener('input', save);
