@@ -24,7 +24,6 @@ public static class PanMath
             outL = l * (1 - pan);
             outR = r + l * pan;
         }
-        outL = Math.Clamp(outL, -1f, 1f);
-        outR = Math.Clamp(outR, -1f, 1f);
     }
 }
+

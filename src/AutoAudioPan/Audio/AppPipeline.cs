@@ -10,7 +10,7 @@ public sealed class AppPipeline : IDisposable
     private readonly ProcessLoopbackCapture _capture;
     private readonly BufferedWaveProvider _buffer;
     private readonly WasapiOut _out;
-    private float _pan;
+    private readonly StreamProcessor _proc = new();
 
     public volatile float TargetPan;
     public volatile float Volume = 1f;
@@ -27,6 +27,7 @@ public sealed class AppPipeline : IDisposable
         };
         _out = new WasapiOut(AudioClientShareMode.Shared, 40);
         _out.Init(_buffer);
+        _buffer.AddSamples(new byte[fmt.AverageBytesPerSecond / 25], 0, fmt.AverageBytesPerSecond / 25); // 40 ms priming
         try { _capture = ProcessLoopbackCapture.Start(rootPid); }
         catch { _out.Dispose(); throw; }
         _capture.DataAvailable += OnData;
@@ -50,16 +51,7 @@ public sealed class AppPipeline : IDisposable
         float gain = InputGain;
         if (gain > 1f && peak > 0.02f) gain = 1f;
         vol *= gain;
-        float target = TargetPan;
-        // Smooth pan changes so window moves don't click.
-        _pan += (target - _pan) * 0.15f;
-        float pan = _pan;
-        for (int i = 0; i + 1 < count; i += 2)
-        {
-            Core.PanMath.Apply(samples[i], samples[i + 1], pan, out var l, out var r);
-            samples[i] = Math.Clamp(l * vol, -1f, 1f);
-            samples[i + 1] = Math.Clamp(r * vol, -1f, 1f);
-        }
+        _proc.Process(samples, count, vol, TargetPan);
         int bytes = count * 4;
         if (_bytes.Length < bytes) _bytes = new byte[bytes];
         Buffer.BlockCopy(samples, 0, _bytes, 0, bytes);
@@ -74,3 +66,4 @@ public sealed class AppPipeline : IDisposable
         _out.Dispose();
     }
 }
+
