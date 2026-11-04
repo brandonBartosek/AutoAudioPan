@@ -6,7 +6,9 @@ const DEFAULTS = {
   muted: false,
   headTracking: {
     enabled: false, available: false, yawDegrees: 0, maxCorrectionDegrees: 45,
-    maxPanMagnitude: 0.75, focusAttenuationEnabled: false, focusFloor: 0.55, focusWidth: 0.55
+    maxPanMagnitude: 0.75, focusAttenuationEnabled: false, focusFloor: 0.55, focusWidth: 0.55,
+    gazeAssistEnabled: false, gazeAvailable: false, gazeDirection: 0,
+    gazeConfidence: 0, gazeDwellProgress: 0, gazeFocusConfirmed: false
   }
 };
 
@@ -44,7 +46,11 @@ function focusGain(sourcePan, headTracking) {
   if (!headTracking || !headTracking.enabled || !headTracking.available ||
       !headTracking.focusAttenuationEnabled) return 1;
   const limit = Math.max(0.001, Math.abs(+headTracking.maxCorrectionDegrees || 45));
-  const direction = Math.max(-1, Math.min(1, (+headTracking.yawDegrees || 0) / limit));
+  const gazeConfirmed = headTracking.gazeAssistEnabled && headTracking.gazeAvailable &&
+    headTracking.gazeFocusConfirmed;
+  const direction = gazeConfirmed
+    ? Math.max(-1, Math.min(1, +headTracking.gazeDirection || 0))
+    : Math.max(-1, Math.min(1, (+headTracking.yawDegrees || 0) / limit));
   const distance = Math.abs(Math.max(-1, Math.min(1, sourcePan)) - direction);
   const configuredWidth = +headTracking.focusWidth;
   const configuredFloor = +headTracking.focusFloor;

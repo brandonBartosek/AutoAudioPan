@@ -13,7 +13,13 @@ public sealed record HeadTrackingBridgeState(
     double MaxPanMagnitude,
     bool FocusAttenuationEnabled,
     double FocusFloor,
-    double FocusWidth);
+    double FocusWidth,
+    bool GazeAssistEnabled = false,
+    bool GazeAvailable = false,
+    double GazeDirection = 0,
+    double GazeConfidence = 0,
+    double GazeDwellProgress = 0,
+    bool GazeFocusConfirmed = false);
 
 /// <summary>
 /// Loopback HTTP endpoint the browser extension polls. While it is polling, the app leaves Chrome's audio alone
@@ -117,7 +123,13 @@ public sealed class ExtensionBridge : IDisposable
                 maxPanMagnitude = h.MaxPanMagnitude,
                 focusAttenuationEnabled = h.FocusAttenuationEnabled,
                 focusFloor = h.FocusFloor,
-                focusWidth = h.FocusWidth
+                focusWidth = h.FocusWidth,
+                gazeAssistEnabled = h.GazeAssistEnabled,
+                gazeAvailable = h.GazeAvailable,
+                gazeDirection = h.GazeDirection,
+                gazeConfidence = h.GazeConfidence,
+                gazeDwellProgress = h.GazeDwellProgress,
+                gazeFocusConfirmed = h.GazeFocusConfirmed
             }
         });
         res.ContentType = "application/json";

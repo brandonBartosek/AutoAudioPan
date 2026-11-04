@@ -26,6 +26,7 @@ public sealed class AudioManager : IDisposable
     private readonly ExtensionBridge _bridge = new();
     private readonly OpenCvHeadYawProvider _headYawProvider = new();
     private readonly HeadTrackingStabilizer _headTracking = new();
+    private readonly GazeAssistStabilizer _gazeAssist = new();
     private int _tick;
     private bool _showHiddenApps;
     private DateTime _calibratingUntil;
@@ -37,6 +38,8 @@ public sealed class AudioManager : IDisposable
     public string HeadTrackingStatus => _headYawProvider.Status;
     public HeadTrackingSnapshot HeadTrackingDiagnostics { get; private set; } =
         new(HeadTrackingMode.Disabled, 0, 0, TimeSpan.Zero, false);
+    public GazeAssistSnapshot GazeDiagnostics { get; private set; } =
+        new(GazeAssistMode.Disabled, 0, 0, 0, TimeSpan.Zero, false);
     public bool ShowHiddenApps
     {
         get => _showHiddenApps;
@@ -68,6 +71,7 @@ public sealed class AudioManager : IDisposable
         {
             _headYawProvider.Stop();
             _headTracking.Reset();
+            _gazeAssist.Reset();
         }
         _settings.Save();
     }
@@ -76,6 +80,7 @@ public sealed class AudioManager : IDisposable
     {
         _headYawProvider.CalibrateNeutral();
         _headTracking.Reset();
+        _gazeAssist.Reset();
         _calibratingUntil = DateTime.UtcNow.AddSeconds(1);
         _settings.Save();
     }
@@ -115,15 +120,35 @@ public sealed class AudioManager : IDisposable
                 Mode = HeadTrackingMode.Calibrating,
                 CorrectionEnabled = false
             };
+        GazeDiagnostics = _gazeAssist.Update(
+            settings.Enabled && settings.GazeAssistEnabled,
+            _headYawProvider.IsAvailable,
+            _headYawProvider.HasGazeSample,
+            _headYawProvider.CurrentGazeDirection,
+            _headYawProvider.GazeConfidence,
+            _headYawProvider.Blink,
+            _headYawProvider.LastGazeSampleUtc,
+            DateTime.UtcNow,
+            settings.GazeConfidenceThreshold,
+            TimeSpan.FromMilliseconds(Math.Clamp(settings.GazeDwellMilliseconds, 100, 2000)),
+            TimeSpan.FromMilliseconds(Math.Clamp(settings.GazeRetentionMilliseconds, 250, 3000)),
+            settings.GazeSmoothing);
+        var gazeFocus = settings.GazeAssistEnabled && GazeDiagnostics.FocusConfirmed;
         _bridge.HeadTracking = new HeadTrackingBridgeState(
             settings.Enabled,
-            HeadTrackingDiagnostics.CorrectionEnabled,
+            HeadTrackingDiagnostics.CorrectionEnabled || gazeFocus,
             HeadTrackingDiagnostics.YawDegrees,
-        settings.MaxCorrectionDegrees,
-        settings.MaxPanMagnitude,
-        settings.FocusAttenuationEnabled,
-        settings.FocusFloor,
-        settings.FocusWidth);
+            settings.MaxCorrectionDegrees,
+            settings.MaxPanMagnitude,
+            settings.FocusAttenuationEnabled,
+            settings.FocusFloor,
+            settings.FocusWidth,
+            settings.GazeAssistEnabled,
+            gazeFocus,
+            GazeDiagnostics.Direction,
+            GazeDiagnostics.Confidence,
+            GazeDiagnostics.DwellProgress,
+            GazeDiagnostics.FocusConfirmed);
     }
 
     private AppRow CreateRow(uint root, string exe)
@@ -331,12 +356,15 @@ public sealed class AudioManager : IDisposable
                         sourcePan, HeadTrackingDiagnostics.YawDegrees, _settings.HeadTracking.MaxCorrectionDegrees);
                 row.CurrentPan = Math.Round(
                     HeadYawMath.ApplyPanCap(pan, _settings.HeadTracking.MaxPanMagnitude), 2);
-                row.CurrentFocusGain = HeadYawMath.FocusGain(
+                var gazeFocus = _settings.HeadTracking.GazeAssistEnabled && GazeDiagnostics.FocusConfirmed;
+                var focusDirection = gazeFocus
+                    ? GazeDiagnostics.Direction
+                    : HeadTrackingDiagnostics.YawDegrees / Math.Max(0.001, _settings.HeadTracking.MaxCorrectionDegrees);
+                row.CurrentFocusGain = HeadYawMath.FocusGainForDirection(
                     sourcePan,
-                    HeadTrackingDiagnostics.YawDegrees,
-                    _settings.HeadTracking.MaxCorrectionDegrees,
+                    focusDirection,
                     _settings.HeadTracking.FocusAttenuationEnabled &&
-                    HeadTrackingDiagnostics.CorrectionEnabled,
+                    (HeadTrackingDiagnostics.CorrectionEnabled || gazeFocus),
                     _settings.HeadTracking.FocusFloor,
                     _settings.HeadTracking.FocusWidth);
             }

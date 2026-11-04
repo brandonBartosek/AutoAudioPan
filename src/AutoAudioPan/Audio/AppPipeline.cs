@@ -12,6 +12,7 @@ public sealed class AppPipeline : IDisposable
     private readonly WasapiOut _out;
     private readonly StreamProcessor _proc = new();
     private readonly System.Diagnostics.Stopwatch _age = System.Diagnostics.Stopwatch.StartNew();
+    private float _appliedFocusGain = 1f;
 
     public volatile float TargetPan;
     public volatile float Volume = 1f;
@@ -53,7 +54,11 @@ public sealed class AppPipeline : IDisposable
         // Originals are attenuated, so captured peaks are tiny; a loud buffer means an unattenuated source, so skip the gain.
         float gain = InputGain;
         if (gain > 1f && peak > 0.02f) gain = 1f;
-        vol *= gain * Math.Clamp(FocusGain, 0, 1);
+        var targetFocus = Math.Clamp(FocusGain, 0, 1);
+        var frames = Math.Max(1, count / ProcessLoopbackCapture.Channels);
+        var ramp = Math.Clamp(frames / (float)ProcessLoopbackCapture.SampleRate / 0.08f, 0.05f, 1);
+        _appliedFocusGain += (targetFocus - _appliedFocusGain) * ramp;
+        vol *= gain * _appliedFocusGain;
         _proc.Process(samples, count, vol, TargetPan);
         int bytes = count * 4;
         if (_bytes.Length < bytes) _bytes = new byte[bytes];

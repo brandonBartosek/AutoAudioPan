@@ -3,6 +3,11 @@ namespace AutoAudioPan.Core;
 public sealed class HeadTrackingSettings
 {
     public bool Enabled { get; set; }
+    public bool GazeAssistEnabled { get; set; }
+    public int GazeDwellMilliseconds { get; set; } = 400;
+    public double GazeConfidenceThreshold { get; set; } = 0.55;
+    public double GazeSmoothing { get; set; } = 0.2;
+    public int GazeRetentionMilliseconds { get; set; } = 900;
     public double DeadZoneDegrees { get; set; } = 2.5;
     public double Smoothing { get; set; } = 0.2;
     public double MaxCorrectionDegrees { get; set; } = 45;
@@ -76,6 +81,153 @@ public sealed record HeadTrackingSnapshot(
     double Confidence,
     TimeSpan SampleAge,
     bool CorrectionEnabled);
+
+public enum GazeAssistMode
+{
+    Disabled,
+    Tracking,
+    Candidate,
+    TemporarilyLost,
+    Fallback
+}
+
+public sealed record GazeAssistSnapshot(
+    GazeAssistMode Mode,
+    double Direction,
+    double Confidence,
+    double DwellProgress,
+    TimeSpan SampleAge,
+    bool FocusConfirmed);
+
+/// <summary>Filters local eye signals into a dwell-confirmed focus direction.</summary>
+public sealed class GazeAssistStabilizer
+{
+    private DateTime _lastSampleUtc;
+    private DateTime _candidateSinceUtc;
+    private double _lastRawDirection;
+    private double _direction;
+    private double _candidateDirection;
+    private bool _hasSample;
+    private bool _hasCandidate;
+    private bool _focusConfirmed;
+
+    public GazeAssistSnapshot Update(
+        bool enabled,
+        bool providerAvailable,
+        bool hasSample,
+        double rawDirection,
+        double confidence,
+        bool blink,
+        DateTime lastSampleUtc,
+        DateTime now,
+        double confidenceThreshold,
+        TimeSpan dwell,
+        TimeSpan retention,
+        double smoothing)
+    {
+        if (!enabled)
+        {
+            Reset();
+            return new(GazeAssistMode.Disabled, 0, 0, 0, TimeSpan.Zero, false);
+        }
+
+        var sampleAge = lastSampleUtc != default && lastSampleUtc <= now
+            ? now - lastSampleUtc
+            : TimeSpan.MaxValue;
+        var threshold = double.IsFinite(confidenceThreshold)
+            ? Math.Clamp(confidenceThreshold, 0, 1)
+            : 0.55;
+        var jump = _hasSample && Math.Abs(rawDirection - _lastRawDirection) > 0.65;
+        var valid = providerAvailable && hasSample && !blink
+                    && confidence >= threshold
+                    && sampleAge <= TimeSpan.FromSeconds(1)
+                    && !jump;
+
+        if (jump)
+        {
+            _lastRawDirection = Math.Clamp(rawDirection, -1, 1);
+            _candidateDirection = _lastRawDirection;
+            _candidateSinceUtc = now;
+            _hasCandidate = true;
+        }
+
+        if (valid)
+        {
+            _lastRawDirection = Math.Clamp(rawDirection, -1, 1);
+            _lastSampleUtc = lastSampleUtc;
+            _hasSample = true;
+            var zone = Zone(_lastRawDirection);
+            if (!_hasCandidate || Zone(_candidateDirection) != zone)
+            {
+                _candidateDirection = _lastRawDirection;
+                _candidateSinceUtc = now;
+                _hasCandidate = true;
+            }
+            else
+            {
+                _candidateDirection = HeadYawMath.Smooth(_candidateDirection, _lastRawDirection, 0.35);
+            }
+
+            var dwellProgress = DwellProgress(now - _candidateSinceUtc, dwell);
+            if (dwellProgress >= 1)
+            {
+                _direction = HeadYawMath.Smooth(_direction, _candidateDirection, smoothing);
+                _focusConfirmed = true;
+            }
+
+            var confirmed = dwellProgress >= 1;
+            return new(
+                confirmed ? GazeAssistMode.Tracking : GazeAssistMode.Candidate,
+                _direction,
+                confidence,
+                confirmed ? 1 : dwellProgress,
+                sampleAge,
+                confirmed);
+        }
+
+        if (_hasSample && sampleAge <= retention)
+        {
+            return new(
+                GazeAssistMode.TemporarilyLost,
+                _direction,
+                0,
+                _hasCandidate ? DwellProgress(now - _candidateSinceUtc, dwell) : 0,
+                sampleAge,
+                _focusConfirmed);
+        }
+
+        var recovering = HeadYawMath.Smooth(_direction, 0, Math.Max(smoothing * 0.35, 0.035));
+        _direction = recovering;
+        return new(
+            GazeAssistMode.Fallback,
+            recovering,
+            0,
+            0,
+            sampleAge,
+            false);
+    }
+
+    public void Reset()
+    {
+        _lastSampleUtc = default;
+        _candidateSinceUtc = default;
+        _lastRawDirection = 0;
+        _direction = 0;
+        _candidateDirection = 0;
+        _hasSample = false;
+        _hasCandidate = false;
+        _focusConfirmed = false;
+    }
+
+    private static double DwellProgress(TimeSpan elapsed, TimeSpan dwell)
+    {
+        var ms = Math.Max(1, dwell.TotalMilliseconds);
+        return Math.Clamp(elapsed.TotalMilliseconds / ms, 0, 1);
+    }
+
+    private static int Zone(double direction) =>
+        direction < -0.33 ? -1 : direction > 0.33 ? 1 : 0;
+}
 
 /// <summary>Stabilizes timestamped yaw samples and degrades smoothly when the face is lost.</summary>
 public sealed class HeadTrackingStabilizer
@@ -206,4 +358,12 @@ public static class HeadYawMath
         var minimum = double.IsFinite(floor) ? Math.Clamp(floor, 0, 1) : 0.55;
         return minimum + (1 - minimum) * focus;
     }
+
+    public static double FocusGainForDirection(
+        double sourcePan,
+        double direction,
+        bool enabled,
+        double floor,
+        double width) =>
+        FocusGain(sourcePan, direction * 45, 45, enabled, floor, width);
 }

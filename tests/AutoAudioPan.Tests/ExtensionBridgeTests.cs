@@ -21,7 +21,9 @@ public class ExtensionBridgeTests
     {
         using var bridge = new ExtensionBridge(47932);
         bridge.Config = new ExtensionConfig("Manual", 0.25, 80, true);
-        bridge.HeadTracking = new HeadTrackingBridgeState(true, true, 12.5, 45, 0.75, true, 0.55, 0.55);
+        bridge.HeadTracking = new HeadTrackingBridgeState(
+            true, true, 12.5, 45, 0.75, true, 0.55, 0.55,
+            true, true, 0.4, 0.8, 1, true);
         Assert.False(bridge.Connected);
 
         var res = await Post(47932, "chrome-extension://abcdef");
@@ -29,7 +31,7 @@ public class ExtensionBridgeTests
         var body = await res.Content.ReadAsStringAsync();
         Assert.Contains("\"mode\":\"Manual\"", body);
         Assert.Contains("\"muted\":true", body);
-        Assert.Contains("\"headTracking\":{\"enabled\":true,\"available\":true,\"yawDegrees\":12.5,\"maxCorrectionDegrees\":45,\"maxPanMagnitude\":0.75,\"focusAttenuationEnabled\":true,\"focusFloor\":0.55,\"focusWidth\":0.55}", body);
+        Assert.Contains("\"headTracking\":{\"enabled\":true,\"available\":true,\"yawDegrees\":12.5,\"maxCorrectionDegrees\":45,\"maxPanMagnitude\":0.75,\"focusAttenuationEnabled\":true,\"focusFloor\":0.55,\"focusWidth\":0.55,\"gazeAssistEnabled\":true,\"gazeAvailable\":true,\"gazeDirection\":0.4,\"gazeConfidence\":0.8,\"gazeDwellProgress\":1,\"gazeFocusConfirmed\":true}", body);
         Assert.True(bridge.Connected);
         Assert.Equal(-0.5, bridge.LastPan, 3);
     }
