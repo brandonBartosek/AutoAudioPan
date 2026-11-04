@@ -28,8 +28,8 @@
 
   function apply() {
     for (const n of nodes) {
-      n.pan.pan.value = state.pan;
-      n.gain.gain.value = state.vol;
+      n.pan.pan.setTargetAtTime(state.pan, getCtx().currentTime, 0.03);
+      n.gain.gain.setTargetAtTime(state.vol, getCtx().currentTime, 0.03);
     }
   }
 
@@ -79,7 +79,8 @@
   window.addEventListener('message', e => {
     const d = e.data;
     if (e.source !== window || !d || d.aap !== 1) return;
-    state.pan = Math.max(-1, Math.min(1, +d.pan || 0));
+    const pan = +d.pan;
+    state.pan = Number.isFinite(pan) ? Math.max(-0.75, Math.min(0.75, pan)) : 0;
     state.vol = Math.max(0, Math.min(4, d.vol == null ? 1 : +d.vol));
     apply();
   });

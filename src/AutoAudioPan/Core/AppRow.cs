@@ -11,7 +11,7 @@ public sealed class AppRow : INotifyPropertyChanged
     public event Action? SettingChanged;
 
     private PanMode _mode;
-    private double _manualPan, _volume = 100, _currentPan;
+    private double _manualPan, _volume = 100, _currentPan, _currentFocusGain = 1;
     private bool _muted, _active, _hidden;
     private string _windowTitle = "";
 
@@ -61,6 +61,12 @@ public sealed class AppRow : INotifyPropertyChanged
     {
         get => _currentPan;
         set { if (Set(ref _currentPan, value)) Raise(nameof(EffectivePan)); }
+    }
+
+    public double CurrentFocusGain
+    {
+        get => _currentFocusGain;
+        set => Set(ref _currentFocusGain, Math.Clamp(value, 0, 1));
     }
 
     public double EffectivePan => _mode switch { PanMode.Manual => _manualPan, PanMode.Auto => _currentPan, _ => 0 };

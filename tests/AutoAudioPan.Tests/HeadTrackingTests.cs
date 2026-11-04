@@ -34,6 +34,23 @@ public sealed class HeadTrackingTests
         Assert.Equal(1, HeadYawMath.CorrectPan(0, -90, 45), 6);
     }
 
+    [Theory]
+    [InlineData(1, 0.75, 0.75)]
+    [InlineData(-1, 0.75, -0.75)]
+    [InlineData(0.4, 0.75, 0.4)]
+    public void PanCap_PreventsFullOneEarRouting(double pan, double cap, double expected) =>
+        Assert.Equal(expected, HeadYawMath.ApplyPanCap(pan, cap), 6);
+
+    [Fact]
+    public void FocusGain_IsNormalNearHeadDirectionAndFlooredFarAway()
+    {
+        var near = HeadYawMath.FocusGain(0.2, 9, 45, true, 0.55, 0.55);
+        var far = HeadYawMath.FocusGain(-1, 45, 45, true, 0.55, 0.55);
+
+        Assert.Equal(1, near, 2);
+        Assert.InRange(far, 0.55, 0.7);
+    }
+
     [Fact]
     public void Stabilizer_HoldsAndPredictsBriefFaceLoss()
     {
@@ -55,14 +72,46 @@ public sealed class HeadTrackingTests
         var first = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         stabilizer.Update(true, true, true, 30, 1, first, first, 0, 1);
 
-        var fallback = stabilizer.Update(true, true, false, 30, 0, first, first.AddSeconds(1), 0, 0.2);
+        var fallback = stabilizer.Update(true, true, false, 30, 0, first, first.AddSeconds(2), 0, 0.2);
         var recovered = stabilizer.Update(true, true, true, 0, 1, first.AddSeconds(1.1), first.AddSeconds(1.1), 0, 0.2);
 
         Assert.Equal(HeadTrackingMode.Fallback, fallback.Mode);
-        Assert.False(fallback.CorrectionEnabled);
+        Assert.True(fallback.CorrectionEnabled);
         Assert.InRange(Math.Abs(fallback.YawDegrees), 0, 30);
         Assert.Equal(HeadTrackingMode.Tracking, recovered.Mode);
         Assert.InRange(Math.Abs(recovered.YawDegrees), 0, Math.Abs(fallback.YawDegrees));
+    }
+
+    [Fact]
+    public void StabilizerRetainsExtremePoseThroughLossThenDecays()
+    {
+        var stabilizer = new HeadTrackingStabilizer();
+        var first = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        stabilizer.Update(true, true, true, 55, 1, first, first, 0, 1);
+
+        var held = stabilizer.Update(true, true, false, 55, 0, first, first.AddMilliseconds(800), 0, 0.2);
+        var decaying = stabilizer.Update(true, true, false, 55, 0, first, first.AddSeconds(1.3), 0, 0.2);
+
+        Assert.Equal(HeadTrackingMode.TemporarilyLost, held.Mode);
+        Assert.True(held.CorrectionEnabled);
+        Assert.Equal(55, held.YawDegrees, 6);
+        Assert.Equal(HeadTrackingMode.Fallback, decaying.Mode);
+        Assert.True(Math.Abs(decaying.YawDegrees) < 55);
+    }
+
+    [Fact]
+    public void StabilizerReacquiresWithoutResettingToZero()
+    {
+        var stabilizer = new HeadTrackingStabilizer();
+        var first = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        stabilizer.Update(true, true, true, -45, 1, first, first, 0, 0.2);
+        stabilizer.Update(true, true, false, -45, 0, first, first.AddSeconds(0.8), 0, 0.2);
+
+        var reacquired = stabilizer.Update(true, true, true, -40, 1, first.AddSeconds(0.9), first.AddSeconds(0.9), 0, 0.2);
+
+        Assert.Equal(HeadTrackingMode.Tracking, reacquired.Mode);
+        Assert.True(reacquired.CorrectionEnabled);
+        Assert.InRange(reacquired.YawDegrees, -20, -10);
     }
 
     [Fact]

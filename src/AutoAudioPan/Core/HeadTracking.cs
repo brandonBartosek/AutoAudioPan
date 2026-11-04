@@ -6,6 +6,10 @@ public sealed class HeadTrackingSettings
     public double DeadZoneDegrees { get; set; } = 2.5;
     public double Smoothing { get; set; } = 0.2;
     public double MaxCorrectionDegrees { get; set; } = 45;
+    public double MaxPanMagnitude { get; set; } = 0.75;
+    public bool FocusAttenuationEnabled { get; set; }
+    public double FocusFloor { get; set; } = 0.55;
+    public double FocusWidth { get; set; } = 0.55;
 }
 
 public interface IHeadYawProvider : IDisposable
@@ -76,6 +80,9 @@ public sealed record HeadTrackingSnapshot(
 /// <summary>Stabilizes timestamped yaw samples and degrades smoothly when the face is lost.</summary>
 public sealed class HeadTrackingStabilizer
 {
+    public static readonly TimeSpan PredictionHold = TimeSpan.FromMilliseconds(350);
+    public static readonly TimeSpan RetentionTimeout = TimeSpan.FromMilliseconds(1200);
+
     private readonly HeadYawFilter _filter = new();
     private DateTime _lastSampleUtc;
     private double _lastRawYaw;
@@ -104,7 +111,8 @@ public sealed class HeadTrackingStabilizer
         var sampleAge = lastSampleUtc != default && lastSampleUtc <= now
             ? now - lastSampleUtc
             : TimeSpan.MaxValue;
-        var valid = providerAvailable && hasSample && confidence >= 0.25 && sampleAge <= TimeSpan.FromSeconds(1);
+        var valid = providerAvailable && hasSample && confidence >= (_hasSample ? 0.2 : 0.3)
+                    && sampleAge <= TimeSpan.FromSeconds(1);
         if (valid)
         {
             if (_hasSample)
@@ -119,7 +127,7 @@ public sealed class HeadTrackingStabilizer
             return new(HeadTrackingMode.Tracking, filtered, confidence, sampleAge, true);
         }
 
-        if (_hasSample && sampleAge <= TimeSpan.FromMilliseconds(350))
+        if (_hasSample && sampleAge <= PredictionHold)
         {
             var predicted = Math.Clamp(
                 _lastRawYaw + _velocity * sampleAge.TotalSeconds,
@@ -129,8 +137,12 @@ public sealed class HeadTrackingStabilizer
             return new(HeadTrackingMode.TemporarilyLost, filtered, 0, sampleAge, true);
         }
 
-        var recovering = _filter.Update(0, deadZoneDegrees, Math.Max(smoothing, 0.12));
-        return new(HeadTrackingMode.Fallback, recovering, 0, sampleAge, false);
+        if (_hasSample && sampleAge <= RetentionTimeout)
+            return new(HeadTrackingMode.TemporarilyLost, _filter.CurrentDegrees, 0, sampleAge, true);
+
+        var recovering = _filter.Update(0, deadZoneDegrees, Math.Max(smoothing * 0.35, 0.035));
+        var correctionEnabled = Math.Abs(recovering) > 0.25;
+        return new(HeadTrackingMode.Fallback, recovering, 0, sampleAge, correctionEnabled);
     }
 
     public void Reset()
@@ -168,5 +180,30 @@ public static class HeadYawMath
         var limit = Math.Max(0.001, Math.Abs(maxCorrectionDegrees));
         var correction = Math.Clamp(filteredYawDegrees / limit, -1, 1);
         return Math.Clamp(sourcePan - correction, -1, 1);
+    }
+
+    public static double ApplyPanCap(double pan, double maxPanMagnitude)
+    {
+        var cap = double.IsFinite(maxPanMagnitude)
+            ? Math.Clamp(Math.Abs(maxPanMagnitude), 0.01, 1)
+            : 0.75;
+        return Math.Clamp(pan, -cap, cap);
+    }
+
+    public static double FocusGain(
+        double sourcePan,
+        double yawDegrees,
+        double maxCorrectionDegrees,
+        bool enabled,
+        double floor,
+        double width)
+    {
+        if (!enabled) return 1;
+        var direction = Math.Clamp(yawDegrees / Math.Max(0.001, Math.Abs(maxCorrectionDegrees)), -1, 1);
+        var distance = Math.Abs(Math.Clamp(sourcePan, -1, 1) - direction);
+        var sigma = double.IsFinite(width) ? Math.Max(0.05, Math.Abs(width)) : 0.55;
+        var focus = Math.Exp(-(distance * distance) / (2 * sigma * sigma));
+        var minimum = double.IsFinite(floor) ? Math.Clamp(floor, 0, 1) : 0.55;
+        return minimum + (1 - minimum) * focus;
     }
 }

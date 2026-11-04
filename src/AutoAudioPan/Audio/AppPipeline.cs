@@ -15,6 +15,7 @@ public sealed class AppPipeline : IDisposable
 
     public volatile float TargetPan;
     public volatile float Volume = 1f;
+    public volatile float FocusGain = 1f;
     public volatile float InputGain = 1f;
     public volatile bool Muted;
 
@@ -52,7 +53,7 @@ public sealed class AppPipeline : IDisposable
         // Originals are attenuated, so captured peaks are tiny; a loud buffer means an unattenuated source, so skip the gain.
         float gain = InputGain;
         if (gain > 1f && peak > 0.02f) gain = 1f;
-        vol *= gain;
+        vol *= gain * Math.Clamp(FocusGain, 0, 1);
         _proc.Process(samples, count, vol, TargetPan);
         int bytes = count * 4;
         if (_bytes.Length < bytes) _bytes = new byte[bytes];
@@ -68,4 +69,3 @@ public sealed class AppPipeline : IDisposable
         _out.Dispose();
     }
 }
-
