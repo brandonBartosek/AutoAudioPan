@@ -21,6 +21,8 @@
                            Text="Auto pans each app to where its window sits across your monitors." />
             </StackPanel>
             <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                <ui:ToggleSwitch x:Name="ShowHiddenToggle" Content="Show hidden apps" Margin="0,0,12,0"
+                                 Checked="ShowHidden_Changed" Unchecked="ShowHidden_Changed" />
                 <ui:ToggleSwitch x:Name="AutostartToggle" Content="Start with Windows" Margin="0,0,8,0"
                                  Checked="Autostart_Changed" Unchecked="Autostart_Changed" />
             </StackPanel>
@@ -31,7 +33,7 @@
                     <Grid>
                 <TextBlock x:Name="EmptyText" Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,80,0,0"
                            Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="16"
-                           Text="No known sound apps are running. They appear here as soon as they start." />
+                           Text="No sound apps have played during this session." />
                 <ItemsControl x:Name="RowsList">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -60,11 +62,20 @@
                                     </Grid.ColumnDefinitions>
                                     <Image Source="{Binding Icon}" Width="40" Height="40" VerticalAlignment="Top" Margin="0,0,16,0" />
                                     <StackPanel Grid.Column="1">
-                                        <DockPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
                                             <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding WindowTitle}" Margin="12,2,0,0" TextTrimming="CharacterEllipsis"
+                                            <TextBlock Grid.Column="1" Text="{Binding WindowTitle}" Margin="12,2,0,0"
+                                                       TextTrimming="CharacterEllipsis"
                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                        </DockPanel>
+                                            <ui:ToggleSwitch Grid.Column="2" Content="Hide row"
+                                                             IsChecked="{Binding Hidden, Mode=TwoWay}"
+                                                             Margin="12,0,0,0" VerticalAlignment="Center" />
+                                        </Grid>
 
                                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                             <RadioButton Content="Auto" GroupName="{Binding RootPid}" IsChecked="{Binding IsAuto}" Margin="0,0,12,0" />
@@ -129,6 +140,8 @@
                         <TextBlock x:Name="HeadTrackingStatus" Margin="16,0,0,0" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
+                    <TextBlock x:Name="HeadTrackingDetails" Margin="0,6,0,0"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                     <ui:Button Content="Calibrate neutral" Margin="0,8,0,0" HorizontalAlignment="Left"
                                Click="HeadTrackingCalibrate_Click" />
                 </StackPanel>

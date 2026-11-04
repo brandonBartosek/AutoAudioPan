@@ -11,6 +11,9 @@ public sealed class HeadTrackingSettings
 public interface IHeadYawProvider : IDisposable
 {
     bool IsAvailable { get; }
+    bool HasSample { get; }
+    double Confidence { get; }
+    DateTime LastSampleUtc { get; }
     string Status { get; }
     double CurrentYawDegrees { get; }
     void Start();
@@ -25,6 +28,9 @@ public sealed class ManualHeadYawProvider : IHeadYawProvider
     private double _neutral;
 
     public bool IsAvailable => true;
+    public bool HasSample => true;
+    public double Confidence => 1;
+    public DateTime LastSampleUtc => DateTime.UtcNow;
     public string Status => "Manual yaw provider";
     public double CurrentYawDegrees => Volatile.Read(ref _yaw) - Volatile.Read(ref _neutral);
 
@@ -49,6 +55,92 @@ public sealed class HeadYawFilter
     }
 
     public void Reset() => CurrentDegrees = 0;
+}
+
+public enum HeadTrackingMode
+{
+    Disabled,
+    Calibrating,
+    Tracking,
+    TemporarilyLost,
+    Fallback
+}
+
+public sealed record HeadTrackingSnapshot(
+    HeadTrackingMode Mode,
+    double YawDegrees,
+    double Confidence,
+    TimeSpan SampleAge,
+    bool CorrectionEnabled);
+
+/// <summary>Stabilizes timestamped yaw samples and degrades smoothly when the face is lost.</summary>
+public sealed class HeadTrackingStabilizer
+{
+    private readonly HeadYawFilter _filter = new();
+    private DateTime _lastSampleUtc;
+    private double _lastRawYaw;
+    private double _velocity;
+    private bool _hasSample;
+
+    public double CurrentDegrees => _filter.CurrentDegrees;
+
+    public HeadTrackingSnapshot Update(
+        bool enabled,
+        bool providerAvailable,
+        bool hasSample,
+        double rawYaw,
+        double confidence,
+        DateTime lastSampleUtc,
+        DateTime now,
+        double deadZoneDegrees,
+        double smoothing)
+    {
+        if (!enabled)
+        {
+            Reset();
+            return new(HeadTrackingMode.Disabled, 0, 0, TimeSpan.Zero, false);
+        }
+
+        var sampleAge = lastSampleUtc != default && lastSampleUtc <= now
+            ? now - lastSampleUtc
+            : TimeSpan.MaxValue;
+        var valid = providerAvailable && hasSample && confidence >= 0.25 && sampleAge <= TimeSpan.FromSeconds(1);
+        if (valid)
+        {
+            if (_hasSample)
+            {
+                var seconds = Math.Max(0.001, (lastSampleUtc - _lastSampleUtc).TotalSeconds);
+                _velocity = Math.Clamp((rawYaw - _lastRawYaw) / seconds, -90, 90);
+            }
+            _lastRawYaw = rawYaw;
+            _lastSampleUtc = lastSampleUtc;
+            _hasSample = true;
+            var filtered = _filter.Update(rawYaw, deadZoneDegrees, smoothing);
+            return new(HeadTrackingMode.Tracking, filtered, confidence, sampleAge, true);
+        }
+
+        if (_hasSample && sampleAge <= TimeSpan.FromMilliseconds(350))
+        {
+            var predicted = Math.Clamp(
+                _lastRawYaw + _velocity * sampleAge.TotalSeconds,
+                _lastRawYaw - 12,
+                _lastRawYaw + 12);
+            var filtered = _filter.Update(predicted, deadZoneDegrees, smoothing);
+            return new(HeadTrackingMode.TemporarilyLost, filtered, 0, sampleAge, true);
+        }
+
+        var recovering = _filter.Update(0, deadZoneDegrees, Math.Max(smoothing, 0.12));
+        return new(HeadTrackingMode.Fallback, recovering, 0, sampleAge, false);
+    }
+
+    public void Reset()
+    {
+        _filter.Reset();
+        _lastSampleUtc = default;
+        _lastRawYaw = 0;
+        _velocity = 0;
+        _hasSample = false;
+    }
 }
 
 public static class HeadYawMath

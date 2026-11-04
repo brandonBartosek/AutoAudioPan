@@ -25,15 +25,28 @@ public sealed class AudioManager : IDisposable
     private readonly AudibleWindowDetector _detector = new();
     private readonly ExtensionBridge _bridge = new();
     private readonly OpenCvHeadYawProvider _headYawProvider = new();
-    private readonly HeadYawFilter _headYawFilter = new();
+    private readonly HeadTrackingStabilizer _headTracking = new();
     private int _tick;
+    private bool _showHiddenApps;
+    private DateTime _calibratingUntil;
 
     public ObservableCollection<AppRow> Rows { get; } = new();
     public ObservableCollection<AppGroup> Groups { get; } = new();
     public KnownApps Known { get; }
     public event Action? HeadTrackingStatusChanged;
     public string HeadTrackingStatus => _headYawProvider.Status;
-    private string _lastHeadTrackingStatus = "";
+    public HeadTrackingSnapshot HeadTrackingDiagnostics { get; private set; } =
+        new(HeadTrackingMode.Disabled, 0, 0, TimeSpan.Zero, false);
+    public bool ShowHiddenApps
+    {
+        get => _showHiddenApps;
+        set
+        {
+            if (_showHiddenApps == value) return;
+            _showHiddenApps = value;
+            RefreshRowVisibility();
+        }
+    }
 
     public AudioManager(Settings settings)
     {
@@ -54,7 +67,7 @@ public sealed class AudioManager : IDisposable
         else
         {
             _headYawProvider.Stop();
-            _headYawFilter.Reset();
+            _headTracking.Reset();
         }
         _settings.Save();
     }
@@ -62,7 +75,8 @@ public sealed class AudioManager : IDisposable
     public void CalibrateHeadTracking()
     {
         _headYawProvider.CalibrateNeutral();
-        _headYawFilter.Reset();
+        _headTracking.Reset();
+        _calibratingUntil = DateTime.UtcNow.AddSeconds(1);
         _settings.Save();
     }
 
@@ -77,12 +91,7 @@ public sealed class AudioManager : IDisposable
             if (_tick++ % 2 == 0) RefreshSessions();
             UpdatePan(windows);
             EnsurePipelines();
-            var status = _headYawProvider.Status;
-            if (!status.Equals(_lastHeadTrackingStatus, StringComparison.Ordinal))
-            {
-                _lastHeadTrackingStatus = status;
-                HeadTrackingStatusChanged?.Invoke();
-            }
+            HeadTrackingStatusChanged?.Invoke();
         }
         catch (Exception ex) { Log.Error("Tick", ex); }
     }
@@ -90,20 +99,27 @@ public sealed class AudioManager : IDisposable
     private void UpdateHeadTracking()
     {
         var settings = _settings.HeadTracking;
-        if (!settings.Enabled || !_headYawProvider.IsAvailable)
-        {
-            _headYawFilter.Reset();
-            _bridge.HeadTracking = new HeadTrackingBridgeState(
-                settings.Enabled, false, 0, settings.MaxCorrectionDegrees);
-            return;
-        }
-
-        var yaw = _headYawFilter.Update(
+        HeadTrackingDiagnostics = _headTracking.Update(
+            settings.Enabled,
+            _headYawProvider.IsAvailable,
+            _headYawProvider.HasSample,
             _headYawProvider.CurrentYawDegrees,
+            _headYawProvider.Confidence,
+            _headYawProvider.LastSampleUtc,
+            DateTime.UtcNow,
             settings.DeadZoneDegrees,
             settings.Smoothing);
+        if (settings.Enabled && DateTime.UtcNow <= _calibratingUntil)
+            HeadTrackingDiagnostics = HeadTrackingDiagnostics with
+            {
+                Mode = HeadTrackingMode.Calibrating,
+                CorrectionEnabled = false
+            };
         _bridge.HeadTracking = new HeadTrackingBridgeState(
-            true, true, yaw, settings.MaxCorrectionDegrees);
+            settings.Enabled,
+            HeadTrackingDiagnostics.CorrectionEnabled,
+            HeadTrackingDiagnostics.YawDegrees,
+            settings.MaxCorrectionDegrees);
     }
 
     private AppRow CreateRow(uint root, string exe)
@@ -117,7 +133,12 @@ public sealed class AudioManager : IDisposable
             Pinned = true
         };
         row.Load(_settings.For(row.SettingsKey));
-        row.SettingChanged += () => { row.Store(_settings.For(row.SettingsKey)); _settings.Save(); };
+        row.SettingChanged += () =>
+        {
+            row.Store(_settings.For(row.SettingsKey));
+            _settings.Save();
+            RefreshRowVisibility();
+        };
         _byRoot[root] = row;
         Log.Info($"row {exe} root={root}");
         return row;
@@ -196,7 +217,11 @@ public sealed class AudioManager : IDisposable
             }
             row.HadSession = true;
             row.LastSeen = now;
-            if (s.State == AudioSessionState.AudioSessionStateActive) row.LastActive = now;
+            if (s.State == AudioSessionState.AudioSessionStateActive)
+            {
+                row.LastActive = now;
+                row.ProducedSoundThisSession = true;
+            }
             if (row.Pipeline != null && !_silencer.IsHeld(s))
             {
                 try { _silencer.Silence(s); } catch { row.AllHeld = false; }
@@ -217,13 +242,26 @@ public sealed class AudioManager : IDisposable
         {
             row.HeldOnce = row.Pipeline != null && row.HadSession;
             row.Active = now - row.LastActive < IdleGrace;
-            if (RowVisibility.ShouldDisplay(row.Active, false)) AddToGroup(row);
+            if (RowVisibility.ShouldDisplay(row.Active, row.ProducedSoundThisSession, row.Hidden, ShowHiddenApps))
+                AddToGroup(row);
             else RemoveFromGroup(row);
             if (now - row.LastSeen > RowTtl)
             {
                 StopPipeline(row, table);
                 _byRoot.Remove(row.RootPid);
             }
+        }
+
+    }
+
+    private void RefreshRowVisibility()
+    {
+        foreach (var row in _byRoot.Values)
+        {
+            if (RowVisibility.ShouldDisplay(row.Active, row.ProducedSoundThisSession, row.Hidden, ShowHiddenApps))
+                AddToGroup(row);
+            else
+                RemoveFromGroup(row);
         }
     }
 
@@ -282,9 +320,9 @@ public sealed class AudioManager : IDisposable
             {
                 // One audio stream per browser process: with several audible windows the best we can do is the average.
                 var pan = visible.Average(w => PanMath.FromWindow(w.Left, w.Right, dl, dw));
-                if (_settings.HeadTracking.Enabled && _headYawProvider.IsAvailable)
+                if (_settings.HeadTracking.Enabled && HeadTrackingDiagnostics.CorrectionEnabled)
                     pan = (float)HeadYawMath.CorrectPan(
-                        pan, _headYawFilter.CurrentDegrees, _settings.HeadTracking.MaxCorrectionDegrees);
+                        pan, HeadTrackingDiagnostics.YawDegrees, _settings.HeadTracking.MaxCorrectionDegrees);
                 row.CurrentPan = Math.Round(pan, 2);
             }
         }

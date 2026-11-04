@@ -12,6 +12,7 @@ public sealed class AppSetting
     public double ManualPan { get; set; }
     public double Volume { get; set; } = 100;
     public bool Muted { get; set; }
+    public bool Hidden { get; set; }
     public string? Group { get; set; }
 }
 

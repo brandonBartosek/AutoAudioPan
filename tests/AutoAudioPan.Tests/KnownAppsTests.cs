@@ -1,4 +1,5 @@
 using AutoAudioPan.Core;
+using System.Text.Json;
 using Xunit;
 
 namespace AutoAudioPan.Tests;
@@ -38,11 +39,28 @@ public class KnownAppsTests
     }
 
     [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(true, false, true)]
-    [InlineData(false, true, true)]
-    public void IdleRowsStayHiddenUnlessActiveOrPinned(bool active, bool pinned, bool visible)
+    [InlineData(false, false, false, false, false)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(false, true, false, false, true)]
+    [InlineData(false, true, true, false, false)]
+    [InlineData(false, true, true, true, true)]
+    public void RowsRequireSessionSoundUnlessHiddenAppsAreShown(
+        bool active,
+        bool producedSound,
+        bool hidden,
+        bool showHidden,
+        bool visible)
     {
-        Assert.Equal(visible, RowVisibility.ShouldDisplay(active, pinned));
+        Assert.Equal(visible, RowVisibility.ShouldDisplay(active, producedSound, hidden, showHidden));
+    }
+
+    [Fact]
+    public void HiddenStateIsStoredSeparatelyFromSessionSound()
+    {
+        var setting = new AppSetting { Hidden = true };
+        var roundTrip = JsonSerializer.Deserialize<AppSetting>(JsonSerializer.Serialize(setting));
+
+        Assert.NotNull(roundTrip);
+        Assert.True(roundTrip!.Hidden);
     }
 }
