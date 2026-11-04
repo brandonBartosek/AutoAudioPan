@@ -20,6 +20,9 @@ public partial class MainWindow : FluentWindow
         manager.Groups.CollectionChanged += (_, _) => UpdateEmpty();
         RefreshKnown();
         AutostartToggle.IsChecked = settings.StartWithWindows;
+        HeadTrackingToggle.IsChecked = settings.HeadTracking.Enabled;
+        HeadTrackingStatus.Text = manager.HeadTrackingStatus;
+        manager.HeadTrackingStatusChanged += RefreshHeadTrackingStatus;
         _loading = false;
         UpdateEmpty();
     }
@@ -86,6 +89,21 @@ public partial class MainWindow : FluentWindow
         _settings.Save();
         App.SetAutostart(on);
     }
+
+    private void HeadTracking_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        _settings.HeadTracking.Enabled = HeadTrackingToggle.IsChecked == true;
+        _settings.Save();
+        _manager.SetHeadTrackingEnabled(_settings.HeadTracking.Enabled);
+    }
+
+    private void HeadTrackingCalibrate_Click(object sender, RoutedEventArgs e)
+    {
+        _manager.CalibrateHeadTracking();
+    }
+
+    private void RefreshHeadTrackingStatus() => HeadTrackingStatus.Text = _manager.HeadTrackingStatus;
 
     // The slider is read-only in Auto/Off; user drags only apply in Manual mode.
     private void PanSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

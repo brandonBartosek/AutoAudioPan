@@ -15,6 +15,7 @@ Per-app WASAPI process-loopback capture of the app's process tree -> pan/volume 
 - For independent per-window Chrome panning that keeps your logins and extensions, install the **browser extension** (below).
 - ~40 ms added latency. Switching the default output device while apps are playing may require the app to re-pick it (restart the app).
 - Apps are pre-registered when a known executable is already running so the pipeline can be ready before its first notification. This uses no driver; a future one-time audio component is not required by the current implementation.
+- Experimental head tracking is disabled by default. When enabled, the optional OpenCV Windows runtime captures webcam frames locally, detects one face, and estimates yaw from facial landmarks. The bundled landmark model is loaded only while tracking is active; camera frames are never saved or transmitted.
 
 ## Chrome extension (independent per-window panning)
 Chrome's audio for all windows comes out of one process, so the app cannot separate windows. The extension in extension/ pans inside the page instead (Web Audio: media element -> gain -> stereo panner), using each window's position across all monitors, so it runs in your normal profile with your logins and extensions.
@@ -44,4 +45,6 @@ dotnet test tests/AutoAudioPan.Tests
 - Settings are stored beside the portable executable when writable, otherwise in `%AppData%\AutoAudioPan`. The app and extension keep the existing Chrome profile, cookies, logins, and extensions.
 - If Chrome remains a single process row, confirm the extension is loaded in the same profile that is playing audio and that the helper is running. If a site uses DRM or blocks autoplay, leave it to Chrome's normal audio path.
 - The helper adds approximately 40 ms of latency. Device changes while audio is active may require restarting the helper.
+- Head tracking is opt-in and uses `screen source angle - head yaw`, with neutral calibration, a small dead zone, smoothing, and a maximum correction. Camera permission failures, unavailable cameras, and lost face samples fall back to normal window-position panning. The first activation may take a few seconds while the local landmark model loads. Headphones are the primary target; ordinary speakers generally need crosstalk cancellation for comparable screen anchoring.
+- The webcam provider adds a full OpenCV Windows native runtime and a bundled facial-landmark model to the portable build. This increases publish size and CPU use while enabled; no separate server or cloud service is required.
 - To build future releases, run `build\Publish.ps1`; inspect the output folder before publishing because the script intentionally refuses to overwrite unrelated files.

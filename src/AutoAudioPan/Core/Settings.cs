@@ -23,6 +23,7 @@ public sealed class Settings
     public List<KnownAppEntry> KnownApps { get; set; } = new();
     public Dictionary<string, string> GroupNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, AppSetting> Apps { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HeadTrackingSettings HeadTracking { get; set; } = new();
 
     private static string FilePath
     {
