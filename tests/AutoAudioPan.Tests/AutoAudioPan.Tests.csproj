@@ -13,10 +13,10 @@
     <Compile Include="..\..\src\AutoAudioPan\Core\Log.cs" Link="Log.cs" />
     <Compile Include="..\..\src\AutoAudioPan\Audio\StreamProcessor.cs" Link="StreamProcessor.cs" />
     <Compile Include="..\..\src\AutoAudioPan\Core\KnownApps.cs" Link="KnownApps.cs" />
+    <Compile Include="..\..\src\AutoAudioPan\Core\RowVisibility.cs" Link="RowVisibility.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
 </Project>
-

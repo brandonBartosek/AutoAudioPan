@@ -20,6 +20,7 @@ public sealed class AudioManager : IDisposable
     private readonly SessionSilencer _silencer = new();
     private readonly DispatcherTimer _timer;
     private readonly Dictionary<uint, AppRow> _byRoot = new();
+    private readonly HashSet<uint> _presented = new();
     private readonly Dictionary<string, IntPtr> _lastWindow = new(StringComparer.OrdinalIgnoreCase);
     private readonly AudibleWindowDetector _detector = new();
     private readonly ExtensionBridge _bridge = new();
@@ -68,7 +69,6 @@ public sealed class AudioManager : IDisposable
         row.SettingChanged += () => { row.Store(_settings.For(row.SettingsKey)); _settings.Save(); };
         _byRoot[root] = row;
         Log.Info($"row {exe} root={root}");
-        AddToGroup(row);
         return row;
     }
 
@@ -77,6 +77,7 @@ public sealed class AudioManager : IDisposable
 
     private void AddToGroup(AppRow row)
     {
+        if (!_presented.Add(row.RootPid)) return;
         Rows.Add(row);
         var g = Groups.FirstOrDefault(x => x.Id.Equals(row.GroupId, StringComparison.OrdinalIgnoreCase));
         if (g == null) { g = new AppGroup(row.GroupId, GroupName(row)); Groups.Add(g); }
@@ -86,6 +87,7 @@ public sealed class AudioManager : IDisposable
 
     private void RemoveFromGroup(AppRow row)
     {
+        _presented.Remove(row.RootPid);
         Rows.Remove(row);
         foreach (var g in Groups.ToList())
             if (g.Children.Remove(row) && g.Children.Count == 0) Groups.Remove(g);
@@ -164,11 +166,12 @@ public sealed class AudioManager : IDisposable
         {
             row.HeldOnce = row.Pipeline != null && row.HadSession;
             row.Active = now - row.LastActive < IdleGrace;
+            if (RowVisibility.ShouldDisplay(row.Active, false)) AddToGroup(row);
+            else RemoveFromGroup(row);
             if (now - row.LastSeen > RowTtl)
             {
                 StopPipeline(row, table);
                 _byRoot.Remove(row.RootPid);
-                RemoveFromGroup(row);
             }
         }
     }

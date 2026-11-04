@@ -4,7 +4,7 @@ Portable Windows 11 app that pans and controls the volume of each app's audio, a
 
 ## Use
 - Run `AutoAudioPan.exe` (no installer; single self-contained file). It lives in the system tray; closing the window hides it, use the tray menu to exit. The Chrome extension is the supported way to keep the normal Chrome profile and still get per-window routing; AutoAudioPan never creates a replacement profile.
-- Each app playing audio gets a row: **Auto** (follows window position across the whole virtual desktop), **Manual** (slider), **Off** (no panning), plus volume and mute.
+- Each app playing audio gets a row: **Auto** (follows window position across the whole virtual desktop), **Manual** (slider), **Off** (no panning), plus volume and mute. Known applications may be prepared in the backend before their first sound, but idle pre-registered apps stay hidden and empty parent groups are removed from the UI.
 - "Start with Windows" adds/removes a per-user Run entry. Settings are saved per app in `settings.json` next to the exe (falls back to `%AppData%\AutoAudioPan`).
 
 ## How it works
