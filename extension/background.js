@@ -1,5 +1,11 @@
 const APP_URL = 'http://127.0.0.1:47831/chrome';
-const DEFAULTS = { mode: 'auto', manualPan: 0, volume: 100, muted: false };
+const DEFAULTS = {
+  mode: 'auto',
+  manualPan: 0,
+  volume: 100,
+  muted: false,
+  headTracking: { enabled: false, available: false, yawDegrees: 0, maxCorrectionDegrees: 45 }
+};
 
 const bridge = { ok: false, cfg: null, at: 0 };
 let displayCache = { at: 0, left: 0, width: 1 };
@@ -17,6 +23,13 @@ async function desktop() {
 function panFor(win, d) {
   const center = win.left + win.width / 2;
   return Math.max(-1, Math.min(1, ((center - d.left) / d.width) * 2 - 1));
+}
+
+function correctPan(sourcePan, headTracking) {
+  if (!headTracking || !headTracking.enabled || !headTracking.available) return sourcePan;
+  const limit = Math.max(0.001, Math.abs(+headTracking.maxCorrectionDegrees || 45));
+  const correction = Math.max(-1, Math.min(1, (+headTracking.yawDegrees || 0) / limit));
+  return Math.max(-1, Math.min(1, sourcePan - correction));
 }
 
 async function localConfig() {
@@ -51,7 +64,11 @@ async function handleTick(sender) {
   const cfg = bridge.ok ? bridge.cfg : await localConfig();
 
   const mode = String(cfg.mode || 'auto').toLowerCase();
-  const pan = mode === 'manual' ? +cfg.manualPan || 0 : mode === 'off' ? 0 : windowPan;
+  const pan = mode === 'manual'
+    ? +cfg.manualPan || 0
+    : mode === 'off'
+      ? 0
+      : correctPan(windowPan, cfg.headTracking);
   const vol = cfg.muted ? 0 : Math.max(0, +cfg.volume) / 100;
   return { pan, vol };
 }

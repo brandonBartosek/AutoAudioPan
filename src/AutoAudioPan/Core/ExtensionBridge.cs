@@ -5,6 +5,7 @@ using System.Text.Json;
 namespace AutoAudioPan.Core;
 
 public sealed record ExtensionConfig(string Mode, double ManualPan, double Volume, bool Muted);
+public sealed record HeadTrackingBridgeState(bool Enabled, bool Available, double YawDegrees, double MaxCorrectionDegrees);
 
 /// <summary>
 /// Loopback HTTP endpoint the browser extension polls. While it is polling, the app leaves Chrome's audio alone
@@ -19,6 +20,7 @@ public sealed class ExtensionBridge : IDisposable
     private long _lastSeen;
     private double _lastPan;
     private volatile ExtensionConfig _config = new("Auto", 0, 100, false);
+    private volatile HeadTrackingBridgeState _headTracking = new(false, false, 0, 45);
 
     public ExtensionBridge(int port = DefaultPort)
     {
@@ -44,6 +46,7 @@ public sealed class ExtensionBridge : IDisposable
     public double LastPan => Volatile.Read(ref _lastPan);
 
     public ExtensionConfig Config { set => _config = value; }
+    public HeadTrackingBridgeState HeadTracking { set => _headTracking = value; }
 
     private async Task Loop()
     {
@@ -90,7 +93,21 @@ public sealed class ExtensionBridge : IDisposable
 
         Interlocked.Exchange(ref _lastSeen, Environment.TickCount64);
         var c = _config;
-        var json = JsonSerializer.SerializeToUtf8Bytes(new { mode = c.Mode, manualPan = c.ManualPan, volume = c.Volume, muted = c.Muted });
+        var h = _headTracking;
+        var json = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            mode = c.Mode,
+            manualPan = c.ManualPan,
+            volume = c.Volume,
+            muted = c.Muted,
+            headTracking = new
+            {
+                enabled = h.Enabled,
+                available = h.Available,
+                yawDegrees = h.YawDegrees,
+                maxCorrectionDegrees = h.MaxCorrectionDegrees
+            }
+        });
         res.ContentType = "application/json";
         res.ContentLength64 = json.Length;
         res.OutputStream.Write(json);
