@@ -36,4 +36,13 @@ public class KnownAppsTests
         renames["x.exe"] = "Mine";
         Assert.Equal("Mine", Grouping.DisplayName("x.exe", "X", renames));
     }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    public void IdleRowsStayHiddenUnlessActiveOrPinned(bool active, bool pinned, bool visible)
+    {
+        Assert.Equal(visible, RowVisibility.ShouldDisplay(active, pinned));
+    }
 }
