@@ -16,15 +16,66 @@ public partial class MainWindow : FluentWindow
         _manager = manager;
         _settings = settings;
         InitializeComponent();
-        RowsList.ItemsSource = manager.Rows;
-        manager.Rows.CollectionChanged += (_, _) => UpdateEmpty();
+        RowsList.ItemsSource = manager.Groups;
+        manager.Groups.CollectionChanged += (_, _) => UpdateEmpty();
+        RefreshKnown();
         AutostartToggle.IsChecked = settings.StartWithWindows;
         _loading = false;
         UpdateEmpty();
     }
 
+    private void RefreshKnown()
+    {
+        KnownList.ItemsSource = null;
+        KnownList.ItemsSource = _manager.Known.Entries.OrderBy(e => e.Exe, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private void AddKnown_Click(object sender, RoutedEventArgs e)
+    {
+        _manager.AddKnown(KnownInput.Text);
+        KnownInput.Text = "";
+        RefreshKnown();
+    }
+
+    private void RemoveKnown_Click(object sender, RoutedEventArgs e)
+    {
+        if (KnownList.SelectedItem is KnownAppEntry k) { _manager.RemoveKnown(k.Exe); RefreshKnown(); }
+    }
+
+    private static string? Prompt(string title, string initial)
+    {
+        var box = new System.Windows.Controls.TextBox { Text = initial, Margin = new Thickness(12) };
+        var ok = new System.Windows.Controls.Button { Content = "OK", IsDefault = true, Width = 80, Margin = new Thickness(12, 0, 12, 12), HorizontalAlignment = HorizontalAlignment.Right };
+        var panel = new System.Windows.Controls.StackPanel();
+        panel.Children.Add(box);
+        panel.Children.Add(ok);
+        var win = new Window { Title = title, Content = panel, Width = 320, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize };
+        ok.Click += (_, _) => win.DialogResult = true;
+        box.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
+        return win.ShowDialog() == true && !string.IsNullOrWhiteSpace(box.Text) ? box.Text.Trim() : null;
+    }
+
+    private void RenameGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not AppGroup g) return;
+        var name = Prompt("Rename group", g.Name);
+        if (name != null) _manager.RenameGroup(g, name);
+    }
+
+    private void MoveToGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not AppRow row) return;
+        var name = Prompt("Move to group (new or existing name)", "");
+        if (name != null) _manager.MoveToGroup(row, name);
+    }
+
+    private void ResetGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is AppRow row) _manager.MoveToGroup(row, null);
+    }
+
     private void UpdateEmpty() =>
-        EmptyText.Visibility = _manager.Rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Visibility = _manager.Groups.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
     private void NewChrome_Click(object sender, RoutedEventArgs e)
     {

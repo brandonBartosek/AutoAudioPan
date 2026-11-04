@@ -16,7 +16,7 @@
 
         <Grid Grid.Row="1" Margin="24,8,24,12">
             <StackPanel>
-                <TextBlock Text="Apps playing audio" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock Text="Sound apps" FontSize="22" FontWeight="SemiBold" />
                 <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0"
                            Text="Auto pans each app to where its window sits across your monitors." />
             </StackPanel>
@@ -30,16 +30,32 @@
         </Grid>
 
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="24,0,24,24">
-            <Grid>
+                    <StackPanel>
+                    <Grid>
                 <TextBlock x:Name="EmptyText" Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,80,0,0"
                            Foreground="{DynamicResource TextFillColorTertiaryBrush}" FontSize="16"
-                           Text="Nothing is playing audio right now. Start some sound and it will appear here." />
+                           Text="No known sound apps are running. They appear here as soon as they start." />
                 <ItemsControl x:Name="RowsList">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Margin="0,0,0,12" Padding="16" CornerRadius="8"
+                            <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,12" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="{Binding Icon}" Width="24" Height="24" Margin="0,0,10,0" />
+                                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Summary}" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        <ui:Button Content="Rename" Margin="16,0,0,0" Padding="8,2" Click="RenameGroup_Click" />
+                                    </StackPanel>
+                                </Expander.Header>
+                                <ItemsControl ItemsSource="{Binding Children}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+<Border Margin="0,0,0,8" Padding="16" CornerRadius="8"
                                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+<Border.Style><Style TargetType="Border"><Style.Triggers><DataTrigger Binding="{Binding IsIdle}" Value="True"><Setter Property="Opacity" Value="0.7" /></DataTrigger></Style.Triggers></Style></Border.Style>
+<Border.ContextMenu><ContextMenu><MenuItem Header="Move to group..." Click="MoveToGroup_Click" /><MenuItem Header="Reset to app group" Click="ResetGroup_Click" /></ContextMenu></Border.ContextMenu>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -88,10 +104,25 @@
                                     </StackPanel>
                                 </Grid>
                             </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </Grid>
+            <Expander Header="Known sound apps (pre-registered so first sounds aren't clipped)" Margin="0,12,0,0" HorizontalAlignment="Stretch">
+                <StackPanel Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBox x:Name="KnownInput" Width="240" ToolTip="Executable name, e.g. app.exe" />
+                        <ui:Button Content="Add" Margin="8,0,0,0" Click="AddKnown_Click" />
+                        <ui:Button Content="Remove selected" Margin="8,0,0,0" Click="RemoveKnown_Click" />
+                    </StackPanel>
+                    <ListBox x:Name="KnownList" MaxHeight="220" DisplayMemberPath="Exe" />
+                </StackPanel>
+            </Expander>
+            </StackPanel>
         </ScrollViewer>
     </Grid>
 </ui:FluentWindow>

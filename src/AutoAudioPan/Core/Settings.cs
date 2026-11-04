@@ -12,12 +12,16 @@ public sealed class AppSetting
     public double ManualPan { get; set; }
     public double Volume { get; set; } = 100;
     public bool Muted { get; set; }
+    public string? Group { get; set; }
 }
 
 public sealed class Settings
 {
     public bool StartWithWindows { get; set; }
     public bool StartMinimized { get; set; }
+    public bool KnownAppsSeeded { get; set; }
+    public List<KnownAppEntry> KnownApps { get; set; } = new();
+    public Dictionary<string, string> GroupNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, AppSetting> Apps { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     private static string FilePath
