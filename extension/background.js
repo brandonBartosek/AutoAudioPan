@@ -4,7 +4,10 @@ const DEFAULTS = {
   manualPan: 0,
   volume: 100,
   muted: false,
-  headTracking: { enabled: false, available: false, yawDegrees: 0, maxCorrectionDegrees: 45 }
+  headTracking: {
+    enabled: false, available: false, yawDegrees: 0, maxCorrectionDegrees: 45,
+    maxPanMagnitude: 0.75, focusAttenuationEnabled: false, focusFloor: 0.55, focusWidth: 0.55
+  }
 };
 
 const bridge = { ok: false, cfg: null, at: 0 };
@@ -26,10 +29,28 @@ function panFor(win, d) {
 }
 
 function correctPan(sourcePan, headTracking) {
-  if (!headTracking || !headTracking.enabled || !headTracking.available) return sourcePan;
+  if (!headTracking || !headTracking.enabled || !headTracking.available)
+    return Math.max(-0.75, Math.min(0.75, sourcePan));
   const limit = Math.max(0.001, Math.abs(+headTracking.maxCorrectionDegrees || 45));
   const correction = Math.max(-1, Math.min(1, (+headTracking.yawDegrees || 0) / limit));
-  return Math.max(-1, Math.min(1, sourcePan - correction));
+  const pan = sourcePan - correction;
+  const configuredCap = +headTracking.maxPanMagnitude;
+  const cap = Number.isFinite(configuredCap)
+    ? Math.max(0.01, Math.min(1, Math.abs(configuredCap))) : 0.75;
+  return Math.max(-cap, Math.min(cap, pan));
+}
+
+function focusGain(sourcePan, headTracking) {
+  if (!headTracking || !headTracking.enabled || !headTracking.available ||
+      !headTracking.focusAttenuationEnabled) return 1;
+  const limit = Math.max(0.001, Math.abs(+headTracking.maxCorrectionDegrees || 45));
+  const direction = Math.max(-1, Math.min(1, (+headTracking.yawDegrees || 0) / limit));
+  const distance = Math.abs(Math.max(-1, Math.min(1, sourcePan)) - direction);
+  const configuredWidth = +headTracking.focusWidth;
+  const configuredFloor = +headTracking.focusFloor;
+  const width = Number.isFinite(configuredWidth) ? Math.max(0.05, Math.abs(configuredWidth)) : 0.55;
+  const floor = Number.isFinite(configuredFloor) ? Math.max(0, Math.min(1, configuredFloor)) : 0.55;
+  return floor + (1 - floor) * Math.exp(-(distance * distance) / (2 * width * width));
 }
 
 async function localConfig() {
@@ -64,12 +85,15 @@ async function handleTick(sender) {
   const cfg = bridge.ok ? bridge.cfg : await localConfig();
 
   const mode = String(cfg.mode || 'auto').toLowerCase();
-  const pan = mode === 'manual'
+  const sourcePan = mode === 'manual'
     ? +cfg.manualPan || 0
     : mode === 'off'
       ? 0
-      : correctPan(windowPan, cfg.headTracking);
-  const vol = cfg.muted ? 0 : Math.max(0, +cfg.volume) / 100;
+      : windowPan;
+  const pan = mode === 'auto' ? correctPan(sourcePan, cfg.headTracking)
+    : Math.max(-0.75, Math.min(0.75, sourcePan));
+  const focus = mode === 'auto' ? focusGain(windowPan, cfg.headTracking) : 1;
+  const vol = cfg.muted ? 0 : Math.max(0, +cfg.volume) / 100 * focus;
   return { pan, vol };
 }
 

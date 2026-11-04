@@ -119,7 +119,11 @@ public sealed class AudioManager : IDisposable
             settings.Enabled,
             HeadTrackingDiagnostics.CorrectionEnabled,
             HeadTrackingDiagnostics.YawDegrees,
-            settings.MaxCorrectionDegrees);
+        settings.MaxCorrectionDegrees,
+        settings.MaxPanMagnitude,
+        settings.FocusAttenuationEnabled,
+        settings.FocusFloor,
+        settings.FocusWidth);
     }
 
     private AppRow CreateRow(uint root, string exe)
@@ -281,6 +285,7 @@ public sealed class AudioManager : IDisposable
             {
                 row.WindowTitle = "Per-window pan via browser extension";
                 row.CurrentPan = Math.Round(_bridge.LastPan, 2);
+                row.CurrentFocusGain = 1;
                 continue;
             }
 
@@ -319,12 +324,23 @@ public sealed class AudioManager : IDisposable
             if (row.Mode == PanMode.Auto && visible.Count > 0)
             {
                 // One audio stream per browser process: with several audible windows the best we can do is the average.
-                var pan = visible.Average(w => PanMath.FromWindow(w.Left, w.Right, dl, dw));
+                var sourcePan = visible.Average(w => PanMath.FromWindow(w.Left, w.Right, dl, dw));
+                double pan = sourcePan;
                 if (_settings.HeadTracking.Enabled && HeadTrackingDiagnostics.CorrectionEnabled)
-                    pan = (float)HeadYawMath.CorrectPan(
-                        pan, HeadTrackingDiagnostics.YawDegrees, _settings.HeadTracking.MaxCorrectionDegrees);
-                row.CurrentPan = Math.Round(pan, 2);
+                    pan = HeadYawMath.CorrectPan(
+                        sourcePan, HeadTrackingDiagnostics.YawDegrees, _settings.HeadTracking.MaxCorrectionDegrees);
+                row.CurrentPan = Math.Round(
+                    HeadYawMath.ApplyPanCap(pan, _settings.HeadTracking.MaxPanMagnitude), 2);
+                row.CurrentFocusGain = HeadYawMath.FocusGain(
+                    sourcePan,
+                    HeadTrackingDiagnostics.YawDegrees,
+                    _settings.HeadTracking.MaxCorrectionDegrees,
+                    _settings.HeadTracking.FocusAttenuationEnabled &&
+                    HeadTrackingDiagnostics.CorrectionEnabled,
+                    _settings.HeadTracking.FocusFloor,
+                    _settings.HeadTracking.FocusWidth);
             }
+            else row.CurrentFocusGain = 1;
         }
 
         _detector.SetCandidates(candidates);
@@ -354,8 +370,10 @@ public sealed class AudioManager : IDisposable
 
             if (row.Pipeline != null)
             {
-                row.Pipeline.TargetPan = (float)row.EffectivePan;
+                row.Pipeline.TargetPan = (float)HeadYawMath.ApplyPanCap(
+                    row.EffectivePan, _settings.HeadTracking.MaxPanMagnitude);
                 row.Pipeline.Volume = (float)(row.Volume / 100.0);
+                row.Pipeline.FocusGain = (float)row.CurrentFocusGain;
                 row.Pipeline.Muted = row.Muted;
                 row.Pipeline.InputGain = row.AllHeld && row.HeldOnce ? 1f / SessionSilencer.Attenuation : 1f;
             }

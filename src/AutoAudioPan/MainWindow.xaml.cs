@@ -21,6 +21,7 @@ public partial class MainWindow : FluentWindow
         RefreshKnown();
         AutostartToggle.IsChecked = settings.StartWithWindows;
         HeadTrackingToggle.IsChecked = settings.HeadTracking.Enabled;
+        FocusAttenuationToggle.IsChecked = settings.HeadTracking.FocusAttenuationEnabled;
         ShowHiddenToggle.IsChecked = manager.ShowHiddenApps;
         RefreshHeadTrackingStatus();
         manager.HeadTrackingStatusChanged += RefreshHeadTrackingStatus;
@@ -104,6 +105,13 @@ public partial class MainWindow : FluentWindow
         _manager.CalibrateHeadTracking();
     }
 
+    private void FocusAttenuation_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        _settings.HeadTracking.FocusAttenuationEnabled = FocusAttenuationToggle.IsChecked == true;
+        _settings.Save();
+    }
+
     private void ShowHidden_Changed(object sender, RoutedEventArgs e)
     {
         _manager.ShowHiddenApps = ShowHiddenToggle.IsChecked == true;
@@ -116,7 +124,9 @@ public partial class MainWindow : FluentWindow
         var age = d.SampleAge == TimeSpan.MaxValue ? "n/a" : $"{d.SampleAge.TotalMilliseconds:0} ms";
         HeadTrackingDetails.Text =
             $"State: {d.Mode}; yaw: {d.YawDegrees:+0.0;-0.0;0.0}°; confidence: {d.Confidence:0.00}; " +
-            $"last sample: {age}. Camera frames are processed locally and never saved or transmitted.";
+            $"last sample: {age}; pan cap: {_settings.HeadTracking.MaxPanMagnitude:0.00}; " +
+            $"focus: {(_settings.HeadTracking.FocusAttenuationEnabled ? "on" : "off")}. " +
+            "Camera frames are processed locally and never saved or transmitted.";
     }
 
     // The slider is read-only in Auto/Off; user drags only apply in Manual mode.

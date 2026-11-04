@@ -5,7 +5,15 @@ using System.Text.Json;
 namespace AutoAudioPan.Core;
 
 public sealed record ExtensionConfig(string Mode, double ManualPan, double Volume, bool Muted);
-public sealed record HeadTrackingBridgeState(bool Enabled, bool Available, double YawDegrees, double MaxCorrectionDegrees);
+public sealed record HeadTrackingBridgeState(
+    bool Enabled,
+    bool Available,
+    double YawDegrees,
+    double MaxCorrectionDegrees,
+    double MaxPanMagnitude,
+    bool FocusAttenuationEnabled,
+    double FocusFloor,
+    double FocusWidth);
 
 /// <summary>
 /// Loopback HTTP endpoint the browser extension polls. While it is polling, the app leaves Chrome's audio alone
@@ -20,7 +28,7 @@ public sealed class ExtensionBridge : IDisposable
     private long _lastSeen;
     private double _lastPan;
     private volatile ExtensionConfig _config = new("Auto", 0, 100, false);
-    private volatile HeadTrackingBridgeState _headTracking = new(false, false, 0, 45);
+    private volatile HeadTrackingBridgeState _headTracking = new(false, false, 0, 45, 0.75, false, 0.55, 0.55);
 
     public ExtensionBridge(int port = DefaultPort)
     {
@@ -105,7 +113,11 @@ public sealed class ExtensionBridge : IDisposable
                 enabled = h.Enabled,
                 available = h.Available,
                 yawDegrees = h.YawDegrees,
-                maxCorrectionDegrees = h.MaxCorrectionDegrees
+                maxCorrectionDegrees = h.MaxCorrectionDegrees,
+                maxPanMagnitude = h.MaxPanMagnitude,
+                focusAttenuationEnabled = h.FocusAttenuationEnabled,
+                focusFloor = h.FocusFloor,
+                focusWidth = h.FocusWidth
             }
         });
         res.ContentType = "application/json";
