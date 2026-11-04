@@ -27,7 +27,7 @@ public sealed class AppRow : INotifyPropertyChanged
     public DateTime LastSeen { get; set; } = DateTime.UtcNow;
 
     public string WindowTitle { get => _windowTitle; set => Set(ref _windowTitle, value); }
-    public bool Active { get => _active; set => Set(ref _active, value); }
+    public bool Active { get => _active; set { if (Set(ref _active, value)) Raise(nameof(IsIdle)); } }
 
     public bool IsAuto { get => _mode == PanMode.Auto; set { if (value) Mode = PanMode.Auto; } }
     public bool IsManual { get => _mode == PanMode.Manual; set { if (value) Mode = PanMode.Manual; } }
@@ -78,13 +78,19 @@ public sealed class AppRow : INotifyPropertyChanged
 
     public void Load(AppSetting s)
     {
-        _mode = s.Mode; _manualPan = s.ManualPan; _volume = s.Volume; _muted = s.Muted;
+        _mode = s.Mode; _manualPan = s.ManualPan; _volume = s.Volume; _muted = s.Muted; CustomGroup = s.Group;
     }
 
     public void Store(AppSetting s)
     {
-        s.Mode = _mode; s.ManualPan = _manualPan; s.Volume = _volume; s.Muted = _muted;
+        s.Mode = _mode; s.ManualPan = _manualPan; s.Volume = _volume; s.Muted = _muted; s.Group = CustomGroup;
     }
+
+    public string? CustomGroup { get; set; }
+    public string GroupId => Grouping.GroupId(ExeName, CustomGroup);
+    public bool HadSession { get; set; }
+    public bool Pinned { get; set; }
+    public bool IsIdle => !_active;
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {

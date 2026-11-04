@@ -25,10 +25,14 @@ public sealed class AudioManager : IDisposable
     private int _tick;
 
     public ObservableCollection<AppRow> Rows { get; } = new();
+    public ObservableCollection<AppGroup> Groups { get; } = new();
+    public KnownApps Known { get; }
 
     public AudioManager(Settings settings)
     {
         _settings = settings;
+        Known = new KnownApps(settings.KnownApps);
+        if (!settings.KnownAppsSeeded) { Known.Seed(); settings.KnownAppsSeeded = true; settings.Save(); }
         SessionSilencer.RecoverFromCrash();
         _timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(100) };
         _timer.Tick += (_, _) => Tick();
@@ -40,11 +44,76 @@ public sealed class AudioManager : IDisposable
         try
         {
             var windows = Win32.TopLevelWindows();
-            if (_tick++ % 5 == 0) RefreshSessions();
+            if (_tick++ % 2 == 0) RefreshSessions();
             UpdatePan(windows);
             EnsurePipelines();
         }
         catch (Exception ex) { Log.Error("Tick", ex); }
+    }
+
+    private AppRow CreateRow(uint root, string exe)
+    {
+        var tag = exe.Equals("chrome.exe", StringComparison.OrdinalIgnoreCase) ? Win32.ChromeProfileTag(root) : null;
+        var row = new AppRow
+        {
+            RootPid = root, ExeName = exe, SettingsKey = tag == null ? exe : $"{exe}#{tag}",
+            DisplayName = tag == null ? Win32.FriendlyName(exe) : $"Chrome ({tag.Replace("Window", "separate window ")})",
+            Icon = LoadIcon(root),
+            Pinned = true
+        };
+        row.Load(_settings.For(row.SettingsKey));
+        row.SettingChanged += () => { row.Store(_settings.For(row.SettingsKey)); _settings.Save(); };
+        _byRoot[root] = row;
+        Log.Info($"row {exe} root={root}");
+        AddToGroup(row);
+        return row;
+    }
+
+    private string GroupName(AppRow row) =>
+        Grouping.DisplayName(row.GroupId, Win32.FriendlyName(row.ExeName), _settings.GroupNames);
+
+    private void AddToGroup(AppRow row)
+    {
+        Rows.Add(row);
+        var g = Groups.FirstOrDefault(x => x.Id.Equals(row.GroupId, StringComparison.OrdinalIgnoreCase));
+        if (g == null) { g = new AppGroup(row.GroupId, GroupName(row)); Groups.Add(g); }
+        g.Children.Add(row);
+        g.RefreshIcon();
+    }
+
+    private void RemoveFromGroup(AppRow row)
+    {
+        Rows.Remove(row);
+        foreach (var g in Groups.ToList())
+            if (g.Children.Remove(row) && g.Children.Count == 0) Groups.Remove(g);
+    }
+
+    /// <summary>Moves a child to a user group (null = back to its default per-app group).</summary>
+    public void MoveToGroup(AppRow row, string? groupName)
+    {
+        RemoveFromGroup(row);
+        row.CustomGroup = string.IsNullOrWhiteSpace(groupName) ? null : Grouping.NewUserGroupId(groupName);
+        row.Store(_settings.For(row.SettingsKey));
+        _settings.Save();
+        AddToGroup(row);
+    }
+
+    public void RenameGroup(AppGroup g, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        _settings.GroupNames[g.Id] = name.Trim();
+        g.Name = name.Trim();
+        _settings.Save();
+    }
+
+    public void AddKnown(string exe)
+    {
+        if (Known.Register(exe, KnownSource.User)) _settings.Save();
+    }
+
+    public void RemoveKnown(string exe)
+    {
+        if (Known.Remove(exe)) _settings.Save();
     }
 
     private void RefreshSessions()
@@ -54,7 +123,7 @@ public sealed class AudioManager : IDisposable
         var now = DateTime.UtcNow;
         var self = (uint)Environment.ProcessId;
 
-        foreach (var r in _byRoot.Values) r.AllHeld = true;
+        foreach (var r in _byRoot.Values) { r.AllHeld = true; r.HadSession = false; }
 
         foreach (var s in sessions)
         {
@@ -64,21 +133,12 @@ public sealed class AudioManager : IDisposable
             var root = Win32.RootOfTree(pid, table);
             if (!_byRoot.TryGetValue(root, out var row))
             {
-                if (s.State != AudioSessionState.AudioSessionStateActive) continue;
                 var exe = table.TryGetValue(root, out var ri) ? ri.Exe : info.Exe;
-                var tag = exe.Equals("chrome.exe", StringComparison.OrdinalIgnoreCase) ? Win32.ChromeProfileTag(root) : null;
-                row = new AppRow
-                {
-                    RootPid = root, ExeName = exe, SettingsKey = tag == null ? exe : $"{exe}#{tag}",
-                    DisplayName = tag == null ? Win32.FriendlyName(exe) : $"Chrome ({tag.Replace("Window", "separate window ")})",
-                    Icon = LoadIcon(root)
-                };
-                row.Load(_settings.For(row.SettingsKey));
-                row.SettingChanged += () => { row.Store(_settings.For(row.SettingsKey)); _settings.Save(); };
-                _byRoot[root] = row;
-                Log.Info($"row {exe} root={root}");
-                Rows.Add(row);
+                if (s.State != AudioSessionState.AudioSessionStateActive && !Known.IsKnown(exe)) continue;
+                if (Known.Register(exe, KnownSource.Learned)) _settings.Save();
+                row = CreateRow(root, exe);
             }
+            row.HadSession = true;
             row.LastSeen = now;
             if (s.State == AudioSessionState.AudioSessionStateActive) row.LastActive = now;
             if (row.Pipeline != null && !_silencer.IsHeld(s))
@@ -87,15 +147,25 @@ public sealed class AudioManager : IDisposable
             }
         }
 
+        // Pre-register running known apps so capture is ready before their first sound.
+        foreach (var (pid, p) in table)
+        {
+            if (pid == self || !Known.IsKnown(p.Exe) || Win32.RootOfTree(pid, table) != pid) continue;
+            if (_byRoot.TryGetValue(pid, out var existing)) { existing.LastSeen = now; continue; }
+            var row = CreateRow(pid, p.Exe);
+            row.LastActive = DateTime.MinValue;
+            row.LastSeen = now;
+        }
+
         foreach (var row in _byRoot.Values.ToList())
         {
-            row.HeldOnce = row.Pipeline != null;
+            row.HeldOnce = row.Pipeline != null && row.HadSession;
             row.Active = now - row.LastActive < IdleGrace;
             if (now - row.LastSeen > RowTtl)
             {
                 StopPipeline(row, table);
                 _byRoot.Remove(row.RootPid);
-                Rows.Remove(row);
+                RemoveFromGroup(row);
             }
         }
     }
@@ -157,7 +227,7 @@ public sealed class AudioManager : IDisposable
     {
         foreach (var row in _byRoot.Values)
         {
-            bool wanted = row.Active && (row.Mode != PanMode.Off || row.Volume < 100 || row.Muted);
+            bool wanted = (row.Active || row.Pinned) && (row.Mode != PanMode.Off || row.Volume < 100 || row.Muted);
             if (wanted && row.Pipeline == null)
             {
                 try
@@ -195,9 +265,9 @@ public sealed class AudioManager : IDisposable
                 uint pid;
                 try { pid = s.GetProcessID; } catch { continue; }
                 if (pid == 0 || !table.ContainsKey(pid) || Win32.RootOfTree(pid, table) != row.RootPid) continue;
-                try { _silencer.Silence(s); } catch { row.AllHeld = false; }
+                try { _silencer.Silence(s); row.HadSession = true; } catch { row.AllHeld = false; }
             }
-            row.HeldOnce = true;
+            row.HeldOnce = row.HadSession;
         }
         catch (Exception ex) { Log.Error("SilenceNow", ex); }
     }
