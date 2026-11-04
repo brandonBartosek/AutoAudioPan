@@ -21,7 +21,8 @@ public partial class MainWindow : FluentWindow
         RefreshKnown();
         AutostartToggle.IsChecked = settings.StartWithWindows;
         HeadTrackingToggle.IsChecked = settings.HeadTracking.Enabled;
-        HeadTrackingStatus.Text = manager.HeadTrackingStatus;
+        ShowHiddenToggle.IsChecked = manager.ShowHiddenApps;
+        RefreshHeadTrackingStatus();
         manager.HeadTrackingStatusChanged += RefreshHeadTrackingStatus;
         _loading = false;
         UpdateEmpty();
@@ -103,7 +104,20 @@ public partial class MainWindow : FluentWindow
         _manager.CalibrateHeadTracking();
     }
 
-    private void RefreshHeadTrackingStatus() => HeadTrackingStatus.Text = _manager.HeadTrackingStatus;
+    private void ShowHidden_Changed(object sender, RoutedEventArgs e)
+    {
+        _manager.ShowHiddenApps = ShowHiddenToggle.IsChecked == true;
+    }
+
+    private void RefreshHeadTrackingStatus()
+    {
+        var d = _manager.HeadTrackingDiagnostics;
+        HeadTrackingStatus.Text = _manager.HeadTrackingStatus;
+        var age = d.SampleAge == TimeSpan.MaxValue ? "n/a" : $"{d.SampleAge.TotalMilliseconds:0} ms";
+        HeadTrackingDetails.Text =
+            $"State: {d.Mode}; yaw: {d.YawDegrees:+0.0;-0.0;0.0}°; confidence: {d.Confidence:0.00}; " +
+            $"last sample: {age}. Camera frames are processed locally and never saved or transmitted.";
+    }
 
     // The slider is read-only in Auto/Off; user drags only apply in Manual mode.
     private void PanSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

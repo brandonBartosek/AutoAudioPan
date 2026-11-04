@@ -12,7 +12,7 @@ public sealed class AppRow : INotifyPropertyChanged
 
     private PanMode _mode;
     private double _manualPan, _volume = 100, _currentPan;
-    private bool _muted, _active;
+    private bool _muted, _active, _hidden;
     private string _windowTitle = "";
 
     public uint RootPid { get; set; }
@@ -79,19 +79,32 @@ public sealed class AppRow : INotifyPropertyChanged
         set { if (Set(ref _muted, value)) SettingChanged?.Invoke(); }
     }
 
+    public bool Hidden
+    {
+        get => _hidden;
+        set { if (Set(ref _hidden, value)) { Raise(nameof(IsShown)); SettingChanged?.Invoke(); } }
+    }
+
+    public bool IsShown
+    {
+        get => !Hidden;
+        set => Hidden = !value;
+    }
+
     public void Load(AppSetting s)
     {
-        _mode = s.Mode; _manualPan = s.ManualPan; _volume = s.Volume; _muted = s.Muted; CustomGroup = s.Group;
+        _mode = s.Mode; _manualPan = s.ManualPan; _volume = s.Volume; _muted = s.Muted; _hidden = s.Hidden; CustomGroup = s.Group;
     }
 
     public void Store(AppSetting s)
     {
-        s.Mode = _mode; s.ManualPan = _manualPan; s.Volume = _volume; s.Muted = _muted; s.Group = CustomGroup;
+        s.Mode = _mode; s.ManualPan = _manualPan; s.Volume = _volume; s.Muted = _muted; s.Hidden = _hidden; s.Group = CustomGroup;
     }
 
     public string? CustomGroup { get; set; }
     public string GroupId => Grouping.GroupId(ExeName, CustomGroup);
     public bool HadSession { get; set; }
+    public bool ProducedSoundThisSession { get; set; }
     public bool Pinned { get; set; }
     public bool IsIdle => !_active;
 

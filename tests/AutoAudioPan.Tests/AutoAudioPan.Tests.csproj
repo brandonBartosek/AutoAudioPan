@@ -13,6 +13,7 @@
     <Compile Include="..\..\src\AutoAudioPan\Core\Log.cs" Link="Log.cs" />
     <Compile Include="..\..\src\AutoAudioPan\Audio\StreamProcessor.cs" Link="StreamProcessor.cs" />
     <Compile Include="..\..\src\AutoAudioPan\Core\KnownApps.cs" Link="KnownApps.cs" />
+    <Compile Include="..\..\src\AutoAudioPan\Core\Settings.cs" Link="Settings.cs" />
     <Compile Include="..\..\src\AutoAudioPan\Core\RowVisibility.cs" Link="RowVisibility.cs" />
     <Compile Include="..\..\src\AutoAudioPan\Core\HeadTracking.cs" Link="HeadTracking.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

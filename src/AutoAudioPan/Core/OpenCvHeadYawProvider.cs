@@ -12,14 +12,21 @@ public sealed class OpenCvHeadYawProvider : IHeadYawProvider
     private CancellationTokenSource? _stop;
     private Task? _worker;
     private double _cameraYaw;
+    private double _confidence;
     private double _neutral;
     private bool _cameraSample;
+    private bool _cameraReady;
+    private DateTime _lastSampleUtc;
     private string _status = "Camera off";
 
     public bool IsAvailable
     {
-        get { lock (_gate) return _cameraSample; }
+        get { lock (_gate) return _cameraReady; }
     }
+
+    public bool HasSample { get { lock (_gate) return _cameraSample; } }
+    public double Confidence { get { lock (_gate) return _confidence; } }
+    public DateTime LastSampleUtc { get { lock (_gate) return _lastSampleUtc; } }
 
     public string Status
     {
@@ -32,7 +39,7 @@ public sealed class OpenCvHeadYawProvider : IHeadYawProvider
         {
             lock (_gate)
             {
-                return _cameraSample ? _cameraYaw - _neutral : 0;
+                return _cameraYaw - _neutral;
             }
         }
     }
@@ -88,7 +95,11 @@ public sealed class OpenCvHeadYawProvider : IHeadYawProvider
             facemark.LoadModel(landmarkPath);
             using var frame = new Mat();
             using var gray = new Mat();
-            lock (_gate) _status = "Webcam head tracking";
+            lock (_gate)
+            {
+                _cameraReady = true;
+                _status = "Webcam head tracking";
+            }
 
             while (!token.IsCancellationRequested)
             {
@@ -108,6 +119,8 @@ public sealed class OpenCvHeadYawProvider : IHeadYawProvider
                     lock (_gate)
                     {
                         _cameraYaw = yaw;
+                        _confidence = FaceConfidence(faces[0]);
+                        _lastSampleUtc = DateTime.UtcNow;
                         _cameraSample = true;
                         _status = "Webcam head tracking";
                     }
@@ -126,7 +139,11 @@ public sealed class OpenCvHeadYawProvider : IHeadYawProvider
         }
         finally
         {
-            lock (_gate) _cameraSample = false;
+            lock (_gate)
+            {
+                _cameraSample = false;
+                _cameraReady = false;
+            }
             foreach (var modelPath in modelPaths)
             {
                 try { File.Delete(modelPath); } catch { }
@@ -139,8 +156,15 @@ public sealed class OpenCvHeadYawProvider : IHeadYawProvider
         lock (_gate)
         {
             _cameraSample = false;
+            _confidence = 0;
             _status = status;
         }
+    }
+
+    private static double FaceConfidence(Rect face)
+    {
+        var area = Math.Max(1, face.Width * face.Height);
+        return Math.Clamp(Math.Sqrt(area) / 260, 0, 1);
     }
 
     private static bool TryReadYaw(Point2f[][] landmarks, out double yaw)
