@@ -73,6 +73,7 @@ public sealed class AudioManager : IDisposable
             var windows = Win32.TopLevelWindows();
             if (_settings.Apps.TryGetValue("chrome.exe", out var cs))
                 _bridge.Config = new ExtensionConfig(cs.Mode.ToString(), cs.ManualPan, cs.Volume, cs.Muted);
+            UpdateHeadTracking();
             if (_tick++ % 2 == 0) RefreshSessions();
             UpdatePan(windows);
             EnsurePipelines();
@@ -84,6 +85,25 @@ public sealed class AudioManager : IDisposable
             }
         }
         catch (Exception ex) { Log.Error("Tick", ex); }
+    }
+
+    private void UpdateHeadTracking()
+    {
+        var settings = _settings.HeadTracking;
+        if (!settings.Enabled || !_headYawProvider.IsAvailable)
+        {
+            _headYawFilter.Reset();
+            _bridge.HeadTracking = new HeadTrackingBridgeState(
+                settings.Enabled, false, 0, settings.MaxCorrectionDegrees);
+            return;
+        }
+
+        var yaw = _headYawFilter.Update(
+            _headYawProvider.CurrentYawDegrees,
+            settings.DeadZoneDegrees,
+            settings.Smoothing);
+        _bridge.HeadTracking = new HeadTrackingBridgeState(
+            true, true, yaw, settings.MaxCorrectionDegrees);
     }
 
     private AppRow CreateRow(uint root, string exe)
@@ -263,17 +283,8 @@ public sealed class AudioManager : IDisposable
                 // One audio stream per browser process: with several audible windows the best we can do is the average.
                 var pan = visible.Average(w => PanMath.FromWindow(w.Left, w.Right, dl, dw));
                 if (_settings.HeadTracking.Enabled && _headYawProvider.IsAvailable)
-                {
-                    var yaw = _headYawFilter.Update(
-                        _headYawProvider.CurrentYawDegrees,
-                        _settings.HeadTracking.DeadZoneDegrees,
-                        _settings.HeadTracking.Smoothing);
-                    pan = (float)HeadYawMath.CorrectPan(pan, yaw, _settings.HeadTracking.MaxCorrectionDegrees);
-                }
-                else
-                {
-                    _headYawFilter.Reset();
-                }
+                    pan = (float)HeadYawMath.CorrectPan(
+                        pan, _headYawFilter.CurrentDegrees, _settings.HeadTracking.MaxCorrectionDegrees);
                 row.CurrentPan = Math.Round(pan, 2);
             }
         }

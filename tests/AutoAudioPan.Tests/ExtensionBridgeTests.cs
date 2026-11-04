@@ -21,6 +21,7 @@ public class ExtensionBridgeTests
     {
         using var bridge = new ExtensionBridge(47932);
         bridge.Config = new ExtensionConfig("Manual", 0.25, 80, true);
+        bridge.HeadTracking = new HeadTrackingBridgeState(true, true, 12.5, 45);
         Assert.False(bridge.Connected);
 
         var res = await Post(47932, "chrome-extension://abcdef");
@@ -28,6 +29,7 @@ public class ExtensionBridgeTests
         var body = await res.Content.ReadAsStringAsync();
         Assert.Contains("\"mode\":\"Manual\"", body);
         Assert.Contains("\"muted\":true", body);
+        Assert.Contains("\"headTracking\":{\"enabled\":true,\"available\":true,\"yawDegrees\":12.5,\"maxCorrectionDegrees\":45}", body);
         Assert.True(bridge.Connected);
         Assert.Equal(-0.5, bridge.LastPan, 3);
     }
