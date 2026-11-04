@@ -15,7 +15,7 @@ public sealed class KnownApps
     {
         "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe",
         "spotify.exe", "discord.exe", "slack.exe", "teams.exe", "ms-teams.exe", "zoom.exe",
-        "outlook.exe", "olk.exe", "code.exe", "code - insiders.exe", "vlc.exe", "wmplayer.exe",
+        "outlook.exe", "olk.exe", "code.exe", "code-insiders.exe", "vlc.exe", "wmplayer.exe",
         "mpc-hc64.exe", "steam.exe", "telegram.exe", "whatsapp.exe", "signal.exe",
         "githubcopilot.exe", "github copilot.exe", "copilot.exe", "github desktop.exe",
         "applemusic.exe", "itunes.exe", "obs64.exe", "skype.exe", "webex.exe"

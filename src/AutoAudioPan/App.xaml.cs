@@ -89,8 +89,8 @@ public partial class App : Application
 
     public static void SetAutostart(bool enable)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey, true);
-        if (key == null) return;
+        using var key = Registry.CurrentUser.CreateSubKey(RunKey, true);
+        if (key == null) throw new InvalidOperationException("Unable to open the current-user startup registry key.");
         if (enable) key.SetValue(RunName, $"\"{Environment.ProcessPath}\" --tray");
         else key.DeleteValue(RunName, false);
     }

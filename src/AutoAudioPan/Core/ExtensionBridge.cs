@@ -62,14 +62,22 @@ public sealed class ExtensionBridge : IDisposable
         var req = ctx.Request;
         var res = ctx.Response;
         var origin = req.Headers["Origin"] ?? "";
+        if (req.HttpMethod == "OPTIONS" && IsExtensionOrigin(origin))
+        {
+            AllowOrigin(res, origin);
+            res.StatusCode = 204;
+            res.Close();
+            return;
+        }
         // Only the extension (never a web page) may talk to this endpoint.
         if (req.HttpMethod != "POST" || req.Url?.AbsolutePath != "/chrome"
-            || !origin.StartsWith("chrome-extension://", StringComparison.Ordinal))
+            || !IsExtensionOrigin(origin))
         {
             res.StatusCode = 403;
             res.Close();
             return;
         }
+        AllowOrigin(res, origin);
 
         try
         {
@@ -87,6 +95,19 @@ public sealed class ExtensionBridge : IDisposable
         res.ContentLength64 = json.Length;
         res.OutputStream.Write(json);
         res.Close();
+    }
+
+    private static bool IsExtensionOrigin(string origin) =>
+        origin.StartsWith("chrome-extension://", StringComparison.Ordinal)
+        && Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+        && uri.Host.Length > 0;
+
+    private static void AllowOrigin(HttpListenerResponse response, string origin)
+    {
+        response.Headers["Access-Control-Allow-Origin"] = origin;
+        response.Headers["Access-Control-Allow-Methods"] = "POST, OPTIONS";
+        response.Headers["Access-Control-Allow-Headers"] = "Content-Type";
+        response.Headers["Vary"] = "Origin";
     }
 
     public void Dispose()
