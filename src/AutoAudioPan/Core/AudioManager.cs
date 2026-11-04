@@ -24,11 +24,16 @@ public sealed class AudioManager : IDisposable
     private readonly Dictionary<string, IntPtr> _lastWindow = new(StringComparer.OrdinalIgnoreCase);
     private readonly AudibleWindowDetector _detector = new();
     private readonly ExtensionBridge _bridge = new();
+    private readonly OpenCvHeadYawProvider _headYawProvider = new();
+    private readonly HeadYawFilter _headYawFilter = new();
     private int _tick;
 
     public ObservableCollection<AppRow> Rows { get; } = new();
     public ObservableCollection<AppGroup> Groups { get; } = new();
     public KnownApps Known { get; }
+    public event Action? HeadTrackingStatusChanged;
+    public string HeadTrackingStatus => _headYawProvider.Status;
+    private string _lastHeadTrackingStatus = "";
 
     public AudioManager(Settings settings)
     {
@@ -39,6 +44,26 @@ public sealed class AudioManager : IDisposable
         _timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(100) };
         _timer.Tick += (_, _) => Tick();
         _timer.Start();
+        if (settings.HeadTracking.Enabled) _headYawProvider.Start();
+    }
+
+    public void SetHeadTrackingEnabled(bool enabled)
+    {
+        _settings.HeadTracking.Enabled = enabled;
+        if (enabled) _headYawProvider.Start();
+        else
+        {
+            _headYawProvider.Stop();
+            _headYawFilter.Reset();
+        }
+        _settings.Save();
+    }
+
+    public void CalibrateHeadTracking()
+    {
+        _headYawProvider.CalibrateNeutral();
+        _headYawFilter.Reset();
+        _settings.Save();
     }
 
     private void Tick()
@@ -51,6 +76,12 @@ public sealed class AudioManager : IDisposable
             if (_tick++ % 2 == 0) RefreshSessions();
             UpdatePan(windows);
             EnsurePipelines();
+            var status = _headYawProvider.Status;
+            if (!status.Equals(_lastHeadTrackingStatus, StringComparison.Ordinal))
+            {
+                _lastHeadTrackingStatus = status;
+                HeadTrackingStatusChanged?.Invoke();
+            }
         }
         catch (Exception ex) { Log.Error("Tick", ex); }
     }
@@ -231,6 +262,18 @@ public sealed class AudioManager : IDisposable
             {
                 // One audio stream per browser process: with several audible windows the best we can do is the average.
                 var pan = visible.Average(w => PanMath.FromWindow(w.Left, w.Right, dl, dw));
+                if (_settings.HeadTracking.Enabled && _headYawProvider.IsAvailable)
+                {
+                    var yaw = _headYawFilter.Update(
+                        _headYawProvider.CurrentYawDegrees,
+                        _settings.HeadTracking.DeadZoneDegrees,
+                        _settings.HeadTracking.Smoothing);
+                    pan = (float)HeadYawMath.CorrectPan(pan, yaw, _settings.HeadTracking.MaxCorrectionDegrees);
+                }
+                else
+                {
+                    _headYawFilter.Reset();
+                }
                 row.CurrentPan = Math.Round(pan, 2);
             }
         }
@@ -315,6 +358,7 @@ public sealed class AudioManager : IDisposable
     public void Dispose()
     {
         _timer.Stop();
+        _headYawProvider.Dispose();
         _detector.Dispose();
         _bridge.Dispose();
         foreach (var r in _byRoot.Values) { r.Pipeline?.Dispose(); r.Pipeline = null; }

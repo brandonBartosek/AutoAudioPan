@@ -119,6 +119,20 @@
                     <ListBox x:Name="KnownList" MaxHeight="220" DisplayMemberPath="Exe" />
                 </StackPanel>
             </Expander>
+            <Expander Header="Experimental head tracking" Margin="0,12,0,0" HorizontalAlignment="Stretch">
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="Camera tracking is opt-in and processed locally. If the camera is unavailable or no face is detected, normal window panning remains the fallback."
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <ui:ToggleSwitch x:Name="HeadTrackingToggle" Content="Enable head-yaw correction"
+                                         Checked="HeadTracking_Changed" Unchecked="HeadTracking_Changed" />
+                        <TextBlock x:Name="HeadTrackingStatus" Margin="16,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <ui:Button Content="Calibrate neutral" Margin="0,8,0,0" HorizontalAlignment="Left"
+                               Click="HeadTrackingCalibrate_Click" />
+                </StackPanel>
+            </Expander>
             </StackPanel>
         </ScrollViewer>
     </Grid>
